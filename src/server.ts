@@ -6,8 +6,8 @@ import {db} from "./common/knex/knex.js";
 const app = createApp();
 
 const server = http.createServer(app);
-server.listen(env.PORT, () => {
-    console.log(`Server listening on ${env.PORT}`);
+server.listen(env.port, () => {
+    console.log(`Server listening on ${env.port}`);
 });
 
 async function shutdown() {

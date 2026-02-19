@@ -10,8 +10,8 @@
     "forceConsistentCasingInFileNames": false,
     "noImplicitAny": true,
     "strict": true,
-    "skipLibCheck": true,
-
+    "skipLibCheck": true
+    
   },
   "include": ["src"]
 }
