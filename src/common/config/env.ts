@@ -31,6 +31,13 @@ const envSchema = z.object({
     DB_POOL_MAX: z.coerce.number().positive().default(10),
     DB_MIGRATION_DIRECTORY: z.string().default('src/database/migrations'),
     DB_MIGRATION_EXTENSION: z.string().default('ts'),
+
+
+    ACCESS_SECRET: z.string(),
+    REFRESH_SECRET: z.string(),
+    ACCESS_EXPIRES_IN: z.string(),
+    REFRESH_EXPIRES_IN: z.string(),
+    BCRYPT_SALT_ROUNDS:  z.coerce.number().min(4).max(15),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -59,5 +66,13 @@ export const env = {
       data.DB_MIGRATION_DIRECTORY.replace(/^\/+/, '')
     ),
         migrationExtension: data.DB_MIGRATION_EXTENSION,
+    },
+    jwt:{
+        refreshSecret: data.REFRESH_SECRET,
+        accessSecret: data.ACCESS_SECRET,
+        accessExpiresIn: data.ACCESS_EXPIRES_IN,
+        refreshExpiresIn: data.REFRESH_EXPIRES_IN,
+        saltRounds: data.BCRYPT_SALT_ROUNDS,
+
     }
 };
