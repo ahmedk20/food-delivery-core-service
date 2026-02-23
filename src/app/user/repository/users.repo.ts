@@ -20,7 +20,7 @@ return new User({
 })
 
 }
-export async function findUserByEmail(email: string , phone: string): Promise<User|undefined> {
+export async function findUserByEmail(email: string): Promise<User|undefined> {
 const row = await db("users").select(USER_COLUMNS).where("email", email).whereNull("deleted_at").first();
 console.log(row);
 return row ? toEntity(row) : undefined;

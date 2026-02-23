@@ -1,8 +1,8 @@
-import {RegisterDTO} from "../dto/auth.dto";
-import { findUserExistsByEmailOrPhone} from "../../user/repository/users.repo";
-import {UserAlreadyExists,CannotSignAsSystemAdmin} from "../errors";
+import {LoginDTO, RegisterDTO} from "../dto/auth.dto";
+import {findUserByEmail, findUserExistsByEmailOrPhone} from "../../user/repository/users.repo";
+import {UserAlreadyExists, CannotSignAsSystemAdmin, IncorrectCredentials} from "../errors";
 import {env} from "../../../common/config/env";
-import {hashPassword} from "../utils/password.util";
+import {comparePassword, hashPassword} from "../utils/password.util";
 import {User} from "../../user/entity/user.entity";
 import {createUser} from "../../user/repository/users.repo";
 import {SystemRole} from "../../user/enums";
@@ -44,6 +44,41 @@ export class AuthService{
             }
         }
 
+
+
+    }
+
+    login = async function(data:LoginDTO){
+        // find the user by email input
+       const user = await findUserByEmail(data.email);
+       if(!user){
+           throw IncorrectCredentials
+       }
+        // compare passwords
+       const match:Promise<boolean> =comparePassword(data.password,user.passwordHash);
+        // if passwords doesnt match throw err
+       if(!match){
+           throw IncorrectCredentials
+       }
+        // generate tokens
+       const payload ={userId: user.id,email:user.email,role: user.systemRole};
+       const accessToken = await createAccessToken(payload);
+       const refreshToken = await createRefreshToken(payload);
+
+        // return the data
+        return {
+            message: "Login successful",
+            accessToken,
+            refreshToken,
+            user: {
+                id: user.id,
+                email: user.email,
+                phone: user.phone,
+                systemRole: user.systemRole,
+                createdAt: user.createdAt,
+            }
+
+        }
 
 
     }
