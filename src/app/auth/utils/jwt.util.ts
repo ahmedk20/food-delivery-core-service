@@ -46,7 +46,7 @@ export async function verifyToken (token:string): Promise<JwtPayload> {
         email:payload.email as string,
         role:payload.role as string,
 
-    }
+    } as JwtPayload
 }
 
 

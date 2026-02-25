@@ -48,7 +48,8 @@ export class ResetPasswordDTO {
     email!: string;
 
     @IsString()
-    @Length(6)
+    @MinLength(6)
+    @MaxLength(6)
     otp!: string;
 
     @IsStrongPassword({

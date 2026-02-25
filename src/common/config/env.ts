@@ -51,6 +51,7 @@ if (!parsed.success) {
 const data = parsed.data;
 
 export const env = {
+    NODE_ENV: data.NODE_ENV || 'development',
     port: data.PORT,
     host: data.HOST,
 
