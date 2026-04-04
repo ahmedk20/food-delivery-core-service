@@ -5,8 +5,8 @@ const PASSWORD_RESET_COLUMNS = ['id','user_id','otp_hash','expires_at','consumed
 
 function toEntity(row: any) {
     return new PasswordReset({
-            id: row.id,
-            userId: row.user_id,
+            id: Number(row.id),
+            userId: Number(row.user_id),
             otpHash: row.otp_hash,
             expiresAt: row.expires_at,
             consumedAt: row.consumed_at,

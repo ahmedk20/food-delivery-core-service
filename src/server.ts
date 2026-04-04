@@ -1,3 +1,4 @@
+import "reflect-metadata"
 import * as http from "node:http";
 import {createApp} from "./app.js";
 import {env} from "./common/config/env.js";

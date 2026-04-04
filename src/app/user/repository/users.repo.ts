@@ -1,5 +1,6 @@
 import {db} from "../../../common/knex/knex";
 import {User} from "../entity/user.entity";
+import knex, {Knex} from "knex";
 
 const USER_COLUMNS = [
     "id","email","phone","name","password_hash","system_role","created_at","updated_at","deleted_at"
@@ -38,8 +39,9 @@ export async function findUserById(id:number): Promise<User|undefined> {
     return row ? toEntity(row) : undefined;
 }
 
-export async function createUser(user:Partial<User>): Promise<User> {
-    const [row] = await db("users").insert({
+// @ts-ignore
+export async function createUser(user:Partial<User>,conn:Knex=db): Promise<User> {
+    const [row] = await conn("users").insert({
         email: user.email,
         phone: user.phone,
         name: user.name,
@@ -54,4 +56,17 @@ return toEntity(row);
 export async function updateUserPassword(id: number, password: string) {
     await db("users").where("id", id).
     update({password_hash: password});
+}
+
+export async function updateUser(user: Partial<User>): Promise<User | undefined> {
+    const [row] = await db("users")
+        .where("id", user.id)
+        .whereNull("deleted_at")
+        .update({
+            ...(user.phone !== undefined && { phone: user.phone }),
+            ...(user.name !== undefined && { name: user.name }),
+            updated_at: new Date(),
+        })
+        .returning(USER_COLUMNS);
+    return row ? toEntity(row) : undefined;
 }

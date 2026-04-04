@@ -37,6 +37,35 @@ export class AuthController {
     }
 
 
+    refresh = async(req: Request, res: Response, next: NextFunction) => {
+        try {
+            const rawToken: string | undefined = req.cookies?.refresh_token;
+            if (!rawToken) {
+                res.status(401).json({ message: 'Invalid or expired refresh token' });
+                return;
+            }
+            const result = await this.authService.refresh(rawToken);
+            setAuthCookies(res, result.accessToken, result.refreshToken);
+            res.status(200).json({ message: 'Token refreshed' });
+        } catch(err) {
+            next(err);
+        }
+    }
+
+
+    logout = async(req: Request, res: Response, next: NextFunction) => {
+        try {
+            const rawToken: string | undefined = req.cookies?.refresh_token;
+            await this.authService.logout(rawToken);
+            res.clearCookie('access_token');
+            res.clearCookie('refresh_token', { path: '/api/auth' });
+            res.status(200).json({ message: 'Logged out successfully' });
+        } catch(err) {
+            next(err);
+        }
+    }
+
+
     forgetPassword = async(req: Request, res: Response, next: NextFunction) => {
         try{
             const data = await validateBody(ForgetPasswordDTO, req.body);

@@ -33,6 +33,8 @@ const envSchema = z.object({
     DB_MIGRATION_EXTENSION: z.string().default('ts'),
 
 
+    REDIS_URL: z.string().default('redis://localhost:6379'),
+
     ACCESS_SECRET: z.string(),
     REFRESH_SECRET: z.string(),
     ACCESS_EXPIRES_IN: z.string(),
@@ -54,6 +56,10 @@ export const env = {
     NODE_ENV: data.NODE_ENV || 'development',
     port: data.PORT,
     host: data.HOST,
+
+    redis: {
+        url: data.REDIS_URL,
+    },
 
     db: {
         url: data.DB_URL,

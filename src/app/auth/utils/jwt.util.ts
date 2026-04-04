@@ -49,5 +49,19 @@ export async function verifyToken (token:string): Promise<JwtPayload> {
     } as JwtPayload
 }
 
+export async function verifyRefreshToken(token: string): Promise<JwtPayload> {
+    const secret = env.jwt.refreshSecret;
+    const secretKey = createSecretKey(secret, 'utf-8');
+    const { payload } = await jwtVerify(token, secretKey);
+
+    return {
+        userId: payload.userId as number,
+        email: payload.email as string,
+        role: payload.role as string,
+    } as JwtPayload;
+}
+
+export { decodeJwt };
+
 
 
