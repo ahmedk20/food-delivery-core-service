@@ -14,13 +14,13 @@ export async function up(knex: Knex): Promise<void> {
             created_at        TIMESTAMP NOT NULL,
             updated_at        TIMESTAMP NOT NULL,
             deleted_at        TIMESTAMP,
-            status_updated_at TIMESTAMP NOT NULL
+            status_updated_at TIMESTAMP NOT NULL,
             constraint fk_restaurants_owner_id foreign key (owner_id) references users(id)
         );
         create index idx_restaurants_owner_id on restaurants(owner_id);
         create index idx_restaurants_status on restaurants(status);
         create index idx_restaurants_primary_country on restaurants(primary_country);
-        create index idx_restaurants_status_created_at on restaurants(status_created_at);
+        create index idx_restaurants_status_updated_at on restaurants(status_updated_at);
         
     `)
 }
