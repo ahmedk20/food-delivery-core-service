@@ -1,9 +1,8 @@
 import {LoginDTO, RegisterDTO,ForgetPasswordDTO,ResetPasswordDTO} from "../dto/auth.dto";
-import {findUserByEmail, findUserExistsByEmailOrPhone,createUser,updateUserPassword} from "../../user/repository/users.repo";
+import {findUserByEmail, findUserExistsByEmailOrPhone, updateUserPassword} from "../../user/repository/users.repo";
 import {UserAlreadyExists, CannotSignAsSystemAdmin, IncorrectCredentials,InvalidOTPError, InvalidRefreshToken} from "../errors";
 import {env} from "../../../common/config/env";
 import {comparePassword, hashPassword,generateOTP,hashOTP,saveTiming} from "../utils/password.util";
-import {User} from "../../user/entity/user.entity";
 import {createPasswordReset,findLatestPasswordResetByUserId,updatePasswordResetConsumedAt} from "../repository/password-reset.repo"
 import {SystemRole} from "../../user/enums";
 import {createAccessToken,createRefreshToken,verifyRefreshToken,decodeJwt} from "../utils/jwt.util";
@@ -13,6 +12,10 @@ import {cacheGet,cacheSet,cacheDel} from "../../../common/redis/redis";
 import {restaurantService, RestaurantService} from "../../restaurant/service/restaurant.service";
 import {RestaurantDataRequiredError} from "../../restaurant/errors";
 import {db} from "../../../common/knex/knex";
+import {userService, UserService} from "../../user/service/user.service";
+import {memberService, MemberService} from "../../rbac/service/member.service";
+import {findRestaurantMemberWithRole} from "../../rbac/repository/restaurant_member.repo";
+import {findBranchIdsByMemberId} from "../../rbac/repository/member-branch.repo";
 
 async function persistRefreshToken(userId: number, rawToken: string): Promise<void> {
     const hash = hashOTP(rawToken);
@@ -38,44 +41,64 @@ async function persistRefreshToken(userId: number, rawToken: string): Promise<vo
 }
 
 export class AuthService{
-    constructor(private readonly restaurantService:RestaurantService) {}
-    register = async (data:RegisterDTO)=>{
+    constructor(
+        private readonly restaurantService: RestaurantService,
+        private readonly userService: UserService,
+        private readonly memberService: MemberService,
+    ) {}
 
+    register = async (data:RegisterDTO)=>{
         if (data.role==SystemRole.SYSTEM_ADMIN){
             throw CannotSignAsSystemAdmin()
         }
         const existing :boolean = await findUserExistsByEmailOrPhone(data.email, data.phone);
-       if(existing){
-           throw  UserAlreadyExists()
-       }
-        const hashedPassword = await hashPassword(data.password)
-        const trx = await db.transaction();
-        let user
-        let restaurant
-        try {
-            user = await createUser({
-               email: data.email,
-               phone: data.phone,
-               name: data.name,
-               passwordHash: hashedPassword,
-               systemRole: data.role,
-           },trx)
-           if (data.role === SystemRole.RESTAURANT_USER) {
-               if (data.restaurant == undefined) {
-                   throw  RestaurantDataRequiredError;
-               }
-               restaurant = await this.restaurantService.create(user.id, data.restaurant, trx)
-           }
-           await trx.commit();
-       }catch (e) {
-           await trx.rollback();
-           throw e;
-       }
-        const payload:JwtPayload = {userId: user.id, role: data.role, email: user.email}
-       const accessToken = await createAccessToken(payload)
-       const refreshToken = await createRefreshToken(payload)
+        if(existing){
+            throw UserAlreadyExists()
+        }
 
-       await persistRefreshToken(user.id, refreshToken);
+        const trx = await db.transaction();
+        let user;
+        let restaurant;
+        let restaurantMemberInfo: Record<string, unknown> = {};
+
+        try {
+            user = await this.userService.create({
+                email: data.email,
+                phone: data.phone,
+                name: data.name,
+                password: data.password,
+                systemRole: data.role,
+            }, trx);
+
+            if (data.role === SystemRole.RESTAURANT_USER) {
+                if (data.restaurant == undefined) {
+                    throw RestaurantDataRequiredError;
+                }
+                restaurant = await this.restaurantService.create(user.id, data.restaurant, trx);
+                await this.memberService.createOwnerMember(restaurant.id, user.id, trx);
+                restaurantMemberInfo = {
+                    restaurantId: restaurant.id,
+                    restaurantRole: 'owner',
+                    branchIds: [],
+                };
+            }
+
+            await trx.commit();
+        } catch (e) {
+            await trx.rollback();
+            throw e;
+        }
+
+        const payload: JwtPayload = {
+            userId: user.id,
+            role: data.role,
+            email: user.email,
+            ...restaurantMemberInfo,
+        };
+        const accessToken = await createAccessToken(payload);
+        const refreshToken = await createRefreshToken(payload);
+
+        await persistRefreshToken(user.id, refreshToken);
 
         return {
             accessToken,
@@ -86,32 +109,37 @@ export class AuthService{
                 phone: user.phone,
                 systemRole: user.systemRole,
             }
-        }
-
-
-
+        };
     }
 
     login = async (data:LoginDTO)=> {
-        // find the user by email input
-       const user = await findUserByEmail(data.email);
-       if(!user){
-           throw IncorrectCredentials()
-       }
-        // compare passwords
-       const match = await comparePassword(data.password,user.passwordHash);
-        // if passwords doesnt match throw err
-       if(!match){
-           throw IncorrectCredentials()
-       }
-        // generate tokens
-       const payload ={userId: user.id,email:user.email,role: user.systemRole};
-       const accessToken = await createAccessToken(payload);
-       const refreshToken = await createRefreshToken(payload);
+        const user = await findUserByEmail(data.email);
+        if(!user){
+            throw IncorrectCredentials()
+        }
+        const match = await comparePassword(data.password,user.passwordHash);
+        if(!match){
+            throw IncorrectCredentials()
+        }
+        let restaurantMemberInfo = null
+        if(user.systemRole == SystemRole.RESTAURANT_USER) {
+            const memberData =  await findRestaurantMemberWithRole(user.id);
+            if(memberData)  {
+                const branchIds = await findBranchIdsByMemberId(memberData.member.id);
+                restaurantMemberInfo = {
+                    restaurantId: memberData.member.restaurantId,
+                    restaurantRole: memberData.roleName,
+                    branchIds
+                }
+            }
+        }
 
-       await persistRefreshToken(user.id, refreshToken);
+        const payload ={userId: user.id,email:user.email,role: user.systemRole, ...restaurantMemberInfo};
+        const accessToken = await createAccessToken(payload);
+        const refreshToken = await createRefreshToken(payload);
 
-        // return the data
+        await persistRefreshToken(user.id, refreshToken);
+
         return {
             message: "Login successful",
             accessToken,
@@ -123,16 +151,12 @@ export class AuthService{
                 systemRole: user.systemRole,
                 createdAt: user.createdAt,
             }
-
-        }
-
-
+        };
     }
 
     refresh = async (rawToken: string) => {
         const hash = hashOTP(rawToken);
 
-        // Try Redis first, fall back to DB
         let recordId: number | undefined;
         try {
             const cached = await cacheGet(`rt:${hash}`);
@@ -151,16 +175,13 @@ export class AuthService{
             recordId = record.id;
         }
 
-        // Validate signature + expiry and extract claims in one call
         const payload = await verifyRefreshToken(rawToken).catch(() => {
             throw InvalidRefreshToken();
         });
 
-        // Rotate: revoke old token
         try { await cacheDel(`rt:${hash}`); } catch { /* non-fatal */ }
         await revokeRefreshTokenById(recordId);
 
-        // Issue new tokens
         const newPayload: JwtPayload = { userId: payload.userId, email: payload.email, role: payload.role };
         const newAccessToken = await createAccessToken(newPayload);
         const newRefreshToken = await createRefreshToken(newPayload);
@@ -181,58 +202,45 @@ export class AuthService{
         await revokeRefreshTokenByHash(hash);
     }
 
-
     forgetPassword = async(data: ForgetPasswordDTO )=> {
-        // check if user exists
         const user = await findUserByEmail(data.email);
         if(!user) {
             return
         }
-        // generate an otp
-        const otp =  generateOTP();
-        // hash the otp
+        const otp = generateOTP();
         const hashedOtp = hashOTP(otp);
-        // insert the otp
         await createPasswordReset({
-                userId: user.id,
-                otpHash: hashedOtp,
-                expiresAt: new Date(Date.now() + (10*60*1000)),
-                createdAt: new Date(),
-            }
-        )
+            userId: user.id,
+            otpHash: hashedOtp,
+            expiresAt: new Date(Date.now() + (10*60*1000)),
+            createdAt: new Date(),
+        });
         // TODO: send email
         console.log(`mocked email sent ${otp}`)
     }
 
-    resetPassword =  async(data: ResetPasswordDTO ) => {
-        // find user
+    resetPassword = async(data: ResetPasswordDTO ) => {
         const user = await findUserByEmail(data.email);
         if (!user) {
             throw InvalidOTPError()
         }
-        // find reset password
         const reset = await findLatestPasswordResetByUserId(user.id);
         console.log(reset)
         if(!reset) {
             throw InvalidOTPError()
         }
-        // verify otp and expiry date
         const inputOTPHash = hashOTP(data.otp)
         console.log(inputOTPHash);
         console.log(reset.otpHash);
-
         console.log(reset.isExpired());
-        const isMatch =  saveTiming(inputOTPHash,reset.otpHash);
+        const isMatch = saveTiming(inputOTPHash,reset.otpHash);
         if(!isMatch || reset.isExpired() ) {
             throw InvalidOTPError()
         }
-        // update user password
         const hashedPassword = await hashPassword(data.newPassword);
         await updateUserPassword(user.id, hashedPassword);
-        // update reset password
         await updatePasswordResetConsumedAt(reset.id)
     }
-
 }
 
-export const authService = new AuthService(restaurantService);
+export const authService = new AuthService(restaurantService, userService, memberService);

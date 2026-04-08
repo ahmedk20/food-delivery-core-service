@@ -14,71 +14,53 @@ import {
     UpdateRestaurantDTO,
     UpdateRestaurantStatusDTO,
 } from "../dto/restaurant.dto";
-import {
-    RestaurantNotFoundError,
-    UserAlreadyExistsError,
-} from "../errors";
-import {findUserExistsByEmailOrPhone, createUser} from "../../user/repository/users.repo";
-import {hashPassword} from "../../auth/utils/password.util";
+import {RestaurantNotFoundError} from "../errors";
 import {SystemRole} from "../../user/enums";
 import {db} from "../../../common/knex/knex";
 import {UnAuthorisedError} from "../../../common/auth/errors";
+import {userService, UserService} from "../../user/service/user.service";
+import {memberService, MemberService} from "../../rbac/service/member.service";
 
 export class RestaurantService {
+    constructor(
+        private readonly userService: UserService,
+        private readonly memberService: MemberService,
+    ) {}
 
-    create = async (userId:number,data:RegisterRestaurantDTO,trx:Knex) => {
+    create = async (userId: number, data: RegisterRestaurantDTO, trx: Knex) => {
         const now = new Date();
         const restaurant = new RestaurantEntity({
-            ownerId:userId,
-            name:data.name,
-            logoUrl:data.logoURL,
-            primaryCountry:data.primaryCountry,
-            status:RestaurantStatus.PENDING,
-            createdAt:now,
-            updatedAt:now,
-            statusUpdatedAt:now,
-        })
-        const result =  await createRestaurant(restaurant,trx);
+            ownerId: userId,
+            name: data.name,
+            logoUrl: data.logoURL,
+            primaryCountry: data.primaryCountry,
+            status: RestaurantStatus.PENDING,
+            createdAt: now,
+            updatedAt: now,
+            statusUpdatedAt: now,
+        });
+        const result = await createRestaurant(restaurant, trx);
         return result;
     }
 
     createWithOwner = async (userRole: SystemRole, data: CreateRestaurantDTO) => {
-        // Check if user is system_admin
         if (userRole !== SystemRole.SYSTEM_ADMIN) {
             throw UnAuthorisedError;
         }
 
-        // Check if user already exists
-        const userExists = await findUserExistsByEmailOrPhone(
-            data.owner.email,
-            data.owner.phone
-        );
-        if (userExists) {
-            throw UserAlreadyExistsError;
-        }
-
-        // Hash password
-        const hashedPassword = await hashPassword(data.owner.password);
-
-        // Start transaction
         const trx = await db.transaction();
         let owner;
         let restaurant;
 
         try {
-            // Create owner user
-            owner = await createUser(
-                {
-                    email: data.owner.email,
-                    phone: data.owner.phone,
-                    name: data.owner.name,
-                    passwordHash: hashedPassword,
-                    systemRole: SystemRole.RESTAURANT_OWNER,
-                },
-                trx
-            );
+            owner = await this.userService.create({
+                email: data.owner.email,
+                phone: data.owner.phone,
+                name: data.owner.name,
+                password: data.owner.password,
+                systemRole: SystemRole.RESTAURANT_OWNER,
+            }, trx);
 
-            // Create restaurant
             const now = new Date();
             restaurant = await createRestaurant(
                 {
@@ -93,6 +75,8 @@ export class RestaurantService {
                 },
                 trx
             );
+
+            await this.memberService.createOwnerMember(restaurant.id, owner.id, trx);
 
             await trx.commit();
         } catch (e) {
@@ -126,13 +110,11 @@ export class RestaurantService {
         userRole: SystemRole,
         data: UpdateRestaurantDTO
     ) => {
-        // Find restaurant
         const restaurant = await findRestaurantById(restaurantId);
         if (!restaurant) {
             throw RestaurantNotFoundError;
         }
 
-        // Check authorization: owner or admin
         if (
             userRole !== SystemRole.SYSTEM_ADMIN &&
             restaurant.ownerId !== userId
@@ -140,7 +122,6 @@ export class RestaurantService {
             throw UnAuthorisedError;
         }
 
-        // Update restaurant
         const updated = await updateRestaurant(restaurantId, data);
         if (!updated) {
             throw RestaurantNotFoundError;
@@ -161,18 +142,15 @@ export class RestaurantService {
         userRole: SystemRole,
         data: UpdateRestaurantStatusDTO
     ) => {
-        // Check if user is system_admin
         if (userRole !== SystemRole.SYSTEM_ADMIN) {
             throw UnAuthorisedError;
         }
 
-        // Find restaurant (404 check)
         const restaurant = await findRestaurantById(restaurantId);
         if (!restaurant) {
             throw RestaurantNotFoundError;
         }
 
-        // Update status
         const updated = await updateRestaurantStatus(restaurantId, data.status);
         if (!updated) {
             throw RestaurantNotFoundError;
@@ -184,11 +162,10 @@ export class RestaurantService {
         };
     }
 
-    findAll = async ()=>{
+    findAll = async () => {
         const result = await findAllRestaurants();
         return result;
     }
-
 }
 
-export const restaurantService = new RestaurantService();
+export const restaurantService = new RestaurantService(userService, memberService);

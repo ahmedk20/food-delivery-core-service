@@ -8,72 +8,72 @@ export interface RBACOptions {
     action: string;
     allowSystemAdmin?: boolean; // by default will be true
 }
-// check for permissions
-// system admin bypass this
-// restaurant users must have permissions for their role
-
-// router.post('/products', authenticate, rbac({resource:"product",action:"create"}), productController.create)
 
 export function rbac(options: RBACOptions) {
     return async(req: Request, res: Response, next: NextFunction) => {
-        // req.user is there , if not we will bail
         try {
             if (!req.user) {
-                throw NotAuthenticated
+                throw NotAuthenticated;
             }
             const {resource, action, allowSystemAdmin = true} = options;
 
-            // if he is a system admin -> bypass
-            if (!allowSystemAdmin && req.user.role == SystemRole.SYSTEM_ADMIN) {
+            // if he is a system admin -> bypass (bug fix: was !allowSystemAdmin)
+            if (allowSystemAdmin && req.user.role == SystemRole.SYSTEM_ADMIN) {
                 return next();
             }
-            // if restaurant user
-            // 1. fetch permissions
-            // 2. check if the permissions has the action for this resource
+
             if (req.user.role == SystemRole.RESTAURANT_USER) {
                 const permissions = await permissionCacheService.getPermissions(req.user.restaurantRole!);
                 if (!permissionCacheService.hasPermission(permissions, resource, action)) {
-                    return res.status(403).json({
-                        error: "Permission denied",
-                    })
+                    return res.status(403).json({ error: "Permission denied" });
                 }
-                // pass
                 return next();
             }
-            // if not restaurant ser -> throw err
-            return res.status(403).json({
-                error: "Permission denied",
-            })
-        }
-        catch (error) {
+
+            return res.status(403).json({ error: "Permission denied" });
+        } catch (error) {
             next(error);
         }
     }
 }
 
-export function requireRestaurantMember(paramName: string= 'restaurantId') {
+export function requireRestaurantMember(paramName: string = 'restaurantId') {
     return async(req: Request, res: Response, next: NextFunction) => {
-        const restaurantId = parseInt(req.params[paramName] as string); // req.params.restaurantId
+        const restaurantId = parseInt(req.params[paramName] as string);
         if (!restaurantId) {
-            return res.status(500).json({"message": "something went wrong"});
+            return res.status(500).json({ message: "something went wrong" });
         }
 
-        if(Number(req.user?.restaurantId) !== Number(restaurantId)) {
-            if(req.user?.role == SystemRole.SYSTEM_ADMIN) {
-                next();
-            }
-            return res.status(403).json({
-                error: "Permission denied",
-            })
+        if (req.user?.role == SystemRole.SYSTEM_ADMIN) return next();
+
+        if (Number(req.user?.restaurantId) !== Number(restaurantId)) {
+            return res.status(403).json({ error: "Permission denied" });
         }
         next();
     }
 }
 
-export async function requireBranchAccess(paramName: string= 'branchId') {
+export function requireBranchAccess(paramName: string = 'branchId') {
     return async(req: Request, res: Response, next: NextFunction) => {
-        // check if the user has access to the branch
+        if (!req.user) {
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        // System admins and owners bypass
+        if (req.user.role == SystemRole.SYSTEM_ADMIN || req.user.restaurantRole === 'owner') {
+            return next();
+        }
+
+        const branchId = Number(req.params[paramName] ?? req.query[paramName]);
+        if (!branchId) {
+            return res.status(400).json({ error: "Branch ID is required" });
+        }
+
+        const branchIds: number[] = (req.user.branchIds as number[]) ?? [];
+        if (!branchIds.includes(branchId)) {
+            return res.status(403).json({ error: "Permission denied" });
+        }
+
         next();
     }
-} {}
-
+}

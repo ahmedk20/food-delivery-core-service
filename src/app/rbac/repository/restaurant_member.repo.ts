@@ -38,6 +38,53 @@ export async function activateMemberByUserId(userId:number, conn: Knex = db): Pr
     )
 }
 
+export async function findMembersByRestaurantId(restaurantId: number) {
+    return db("restaurant_members as rm")
+        .select(
+            "rm.id",
+            "rm.user_id as userId",
+            "u.email",
+            "u.name",
+            "u.phone",
+            "r.name as role",
+            "r.display_name as roleDisplayName",
+            "rm.status"
+        )
+        .join("users as u", "rm.user_id", "u.id")
+        .join("roles as r", "rm.role_id", "r.id")
+        .where("rm.restaurant_id", restaurantId);
+}
+
+export async function findMemberWithRoleName(memberId: number): Promise<{member: RestaurantMember; roleName: string} | null> {
+    const row = await db("restaurant_members as rm")
+        .select("rm.*", "r.name as role_name")
+        .join("roles as r", "rm.role_id", "r.id")
+        .where("rm.id", memberId)
+        .first();
+
+    if (!row) return null;
+
+    return {
+        member: toEntity(row),
+        roleName: row.role_name,
+    };
+}
+
+export async function updateMember(memberId: number, data: {roleId?: number; status?: string}, trx?: Knex): Promise<void> {
+    const query = trx || db;
+    await query("restaurant_members").where("id", memberId).update({
+        ...(data.roleId !== undefined && { role_id: data.roleId }),
+        ...(data.status !== undefined && { status: data.status }),
+        updated_at: new Date(),
+    });
+}
+
+export async function deleteMember(memberId: number, trx?: Knex): Promise<void> {
+    const query = trx || db;
+    await query("member_branches").where("member_id", memberId).delete();
+    await query("restaurant_members").where("id", memberId).delete();
+}
+
 export async function findRestaurantMemberWithRole(userId: number): Promise<{member: RestaurantMember; roleName:string;}> {
     const row = await db("restaurant_members as rm").select(
         "rm.restaurant_id",
