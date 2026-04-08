@@ -6,9 +6,10 @@ import {
     MaxLength,
     IsEnum,
     IsNotEmpty,
-    IsOptional, ValidateNested,
-
+    IsOptional,
+    ValidateNested,
 } from "class-validator";
+import { Type } from "class-transformer";
 import {SystemRole} from "../../user/enums";
 
 export class RegisterDTO {

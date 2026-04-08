@@ -52,7 +52,7 @@ export async function createBranch (data: Partial <Branch>, conn: Knex = db): Pr
 
 export async function findNearbyBranches(lat: number, lng: number): Promise<Branch[]> {
     const result = await db.raw(`
-       SELECT 
+       SELECT
        b.id,
        b.restaurant_id,
        b.address_text,
@@ -70,4 +70,88 @@ export async function findNearbyBranches(lat: number, lng: number): Promise<Bran
     `,[lng, lat]);
 
     return result.rows;
+}
+
+export async function findBranchesByRestaurant(restaurantId: number): Promise<Branch[]> {
+    const rows = await db("restaurant_branches")
+        .select(BRANCH_COLUMNS)
+        .where("restaurant_id", restaurantId);
+    return rows.map(toEntity);
+}
+
+export async function findBranchById(id: number): Promise<Branch | undefined> {
+    const row = await db("restaurant_branches")
+        .select(BRANCH_COLUMNS)
+        .where("id", id)
+        .first();
+    return row ? toEntity(row) : undefined;
+}
+
+export async function updateBranch(
+    id: number,
+    updates: Partial<Pick<Branch, 'label' | 'addressText' | 'lat' | 'lng' | 'opensAt' | 'closesAt' | 'deliveryRadius' | 'currency' | 'acceptOrders'>>,
+    conn: Knex = db
+): Promise<Branch | undefined> {
+    const updateData: Record<string, any> = {
+        updated_at: new Date(),
+    };
+
+    if (updates.label !== undefined) {
+        updateData.label = updates.label;
+    }
+    if (updates.addressText !== undefined) {
+        updateData.address_text = updates.addressText;
+    }
+    if (updates.lat !== undefined) {
+        updateData.lat = updates.lat;
+    }
+    if (updates.lng !== undefined) {
+        updateData.lng = updates.lng;
+    }
+    if (updates.opensAt !== undefined) {
+        updateData.opens_at = updates.opensAt;
+    }
+    if (updates.closesAt !== undefined) {
+        updateData.closes_at = updates.closesAt;
+    }
+    if (updates.deliveryRadius !== undefined) {
+        updateData.delivery_radius = updates.deliveryRadius;
+    }
+    if (updates.currency !== undefined) {
+        updateData.currency = updates.currency;
+    }
+    if (updates.acceptOrders !== undefined) {
+        updateData.accept_orders = updates.acceptOrders;
+    }
+
+    const [row] = await conn("restaurant_branches")
+        .where("id", id)
+        .update(updateData)
+        .returning(BRANCH_COLUMNS);
+
+    return row ? toEntity(row) : undefined;
+}
+
+export async function updateBranchStatus(
+    id: number,
+    updates: Partial<Pick<Branch, 'isActive' | 'commission'>>,
+    conn: Knex = db
+): Promise<Branch | undefined> {
+    const updateData: Record<string, any> = {
+        updated_at: new Date(),
+    };
+
+    if (updates.isActive !== undefined) {
+        updateData.is_active = updates.isActive;
+    }
+    if (updates.commission !== undefined) {
+        updateData.commission = updates.commission;
+    }
+
+    const [row] = await conn("restaurant_branches")
+        .where("id", id)
+        .update(updateData)
+        .returning(BRANCH_COLUMNS);
+
+    return row ? toEntity(row) : undefined;
 }

@@ -1,14 +1,27 @@
 import {UnAuthorisedError} from "../../../common/auth/errors";
 import {findRestaurantById} from "../../restaurant/repository/restaurant.repo";
 import {SystemRole} from "../../user/enums";
-import {CreateBranchDTO} from "../dto/branch.dto";
-import {findNearbyBranches, createBranch} from "../repository/branch.repository";
+import {CreateBranchDTO, UpdateBranchDTO, UpdateBranchStatusDTO} from "../dto/branch.dto";
+import {
+    findNearbyBranches,
+    createBranch,
+    findBranchesByRestaurant,
+    findBranchById,
+    updateBranch,
+    updateBranchStatus,
+} from "../repository/branch.repository";
+import {BranchNotFoundError} from "../errors";
 
 export class BranchService {
 
     findNearby = async (lat:number, lng:number) => {
         const rows = await findNearbyBranches(lat, lng);
         return rows;
+    }
+
+    findByRestaurant = async (restaurantId: number) => {
+        const branches = await findBranchesByRestaurant(restaurantId);
+        return branches;
     }
 
     create = async (restaurantId: number, userId: number, userRole: SystemRole, data: CreateBranchDTO) => {
@@ -39,6 +52,68 @@ export class BranchService {
         });
 
         return branch;
+    }
+
+    update = async (
+        branchId: number,
+        userId: number,
+        userRole: SystemRole,
+        data: UpdateBranchDTO
+    ) => {
+        // Find branch
+        const branch = await findBranchById(branchId);
+        if (!branch) {
+            throw BranchNotFoundError;
+        }
+
+        // Find restaurant to check ownership
+        const restaurant = await findRestaurantById(branch.restaurantId);
+
+        // Check authorization: owner or admin
+        if (
+            userRole !== SystemRole.SYSTEM_ADMIN &&
+            restaurant?.ownerId !== userId
+        ) {
+            throw UnAuthorisedError;
+        }
+
+        // Update branch
+        const updated = await updateBranch(branchId, data);
+        if (!updated) {
+            throw BranchNotFoundError;
+        }
+
+        return updated;
+    }
+
+    updateStatus = async (
+        branchId: number,
+        userRole: SystemRole,
+        data: UpdateBranchStatusDTO
+    ) => {
+        // Check if user is system_admin
+        if (userRole !== SystemRole.SYSTEM_ADMIN) {
+            throw UnAuthorisedError;
+        }
+
+        // Find branch (404 check)
+        const branch = await findBranchById(branchId);
+        if (!branch) {
+            throw BranchNotFoundError;
+        }
+
+        // Update status
+        const updated = await updateBranchStatus(branchId, data);
+        if (!updated) {
+            throw BranchNotFoundError;
+        }
+
+        return {
+            id: updated.id,
+            isActive: updated.isActive,
+            acceptOrders: updated.acceptOrders,
+            commission: updated.commission,
+        };
     }
 }
 

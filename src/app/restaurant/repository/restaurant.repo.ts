@@ -48,3 +48,50 @@ export async function createRestaurant(restaurant:Partial<RestaurantEntity>,conn
     }).returning(RESTAURANT_COLUMNS);
     return toEntity(row);
 }
+
+export async function updateRestaurant(
+    id: number,
+    updates: Partial<Pick<RestaurantEntity, 'name' | 'logoUrl' | 'primaryCountry'>>,
+    conn: Knex = db
+): Promise<RestaurantEntity | undefined> {
+    const updateData: Record<string, any> = {
+        updated_at: new Date(),
+    };
+
+    if (updates.name !== undefined) {
+        updateData.name = updates.name;
+    }
+    if (updates.logoUrl !== undefined) {
+        updateData.logo_url = updates.logoUrl;
+    }
+    if (updates.primaryCountry !== undefined) {
+        updateData.primary_country = updates.primaryCountry;
+    }
+
+    const [row] = await conn("restaurants")
+        .where("id", id)
+        .whereNull("deleted_at")
+        .update(updateData)
+        .returning(RESTAURANT_COLUMNS);
+
+    return row ? toEntity(row) : undefined;
+}
+
+export async function updateRestaurantStatus(
+    id: number,
+    status: string,
+    conn: Knex = db
+): Promise<RestaurantEntity | undefined> {
+    const now = new Date();
+    const [row] = await conn("restaurants")
+        .where("id", id)
+        .whereNull("deleted_at")
+        .update({
+            status,
+            status_updated_at: now,
+            updated_at: now,
+        })
+        .returning(RESTAURANT_COLUMNS);
+
+    return row ? toEntity(row) : undefined;
+}
