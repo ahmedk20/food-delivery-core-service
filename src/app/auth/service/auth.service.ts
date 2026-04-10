@@ -1,21 +1,23 @@
 import {LoginDTO, RegisterDTO,ForgetPasswordDTO,ResetPasswordDTO} from "../dto/auth.dto";
 import {findUserByEmail, findUserExistsByEmailOrPhone, updateUserPassword} from "../../user/repository/users.repo";
 import {UserAlreadyExists, CannotSignAsSystemAdmin, IncorrectCredentials,InvalidOTPError, InvalidRefreshToken} from "../errors";
-import {env} from "../../../common/config/env";
+import {env} from "../../../lib/config/env";
 import {comparePassword, hashPassword,generateOTP,hashOTP,saveTiming} from "../utils/password.util";
 import {createPasswordReset,findLatestPasswordResetByUserId,updatePasswordResetConsumedAt} from "../repository/password-reset.repo"
 import {SystemRole} from "../../user/enums";
 import {createAccessToken,createRefreshToken,verifyRefreshToken,decodeJwt} from "../utils/jwt.util";
 import type {JwtPayload} from "../utils/jwt.util";
 import {createRefreshTokenRecord,findRefreshTokenByHash,revokeRefreshTokenById,revokeRefreshTokenByHash} from "../repository/refresh-token.repo";
-import {cacheGet,cacheSet,cacheDel} from "../../../common/redis/redis";
-import {restaurantService, RestaurantService} from "../../restaurant/service/restaurant.service";
+import {cacheGet,cacheSet,cacheDel} from "../../../lib/redis/redis";
+import {RestaurantService} from "../../restaurant/service/restaurant.service";
 import {RestaurantDataRequiredError} from "../../restaurant/errors";
-import {db} from "../../../common/knex/knex";
-import {userService, UserService} from "../../user/service/user.service";
-import {memberService, MemberService} from "../../rbac/service/member.service";
+import {db} from "../../../lib/knex/knex";
+import {UserService} from "../../user/service/user.service";
+import {MemberService} from "../../rbac/service/member.service";
 import {findRestaurantMemberWithRole} from "../../rbac/repository/restaurant_member.repo";
 import {findBranchIdsByMemberId} from "../../rbac/repository/member-branch.repo";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
 async function persistRefreshToken(userId: number, rawToken: string): Promise<void> {
     const hash = hashOTP(rawToken);
@@ -39,12 +41,12 @@ async function persistRefreshToken(userId: number, rawToken: string): Promise<vo
         }
     }
 }
-
+@injectable()
 export class AuthService{
     constructor(
-        private readonly restaurantService: RestaurantService,
-        private readonly userService: UserService,
-        private readonly memberService: MemberService,
+      @inject(TOKENS.RestaurantService)  private readonly restaurantService: RestaurantService,
+      @inject(TOKENS.UserService)  private readonly userService: UserService,
+      @inject(TOKENS.MemberService)  private readonly memberService: MemberService,
     ) {}
 
     register = async (data:RegisterDTO)=>{
@@ -243,4 +245,3 @@ export class AuthService{
     }
 }
 
-export const authService = new AuthService(restaurantService, userService, memberService);

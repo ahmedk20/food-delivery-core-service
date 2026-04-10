@@ -1,5 +1,5 @@
 import { RefreshToken } from "../entity/refresh-token.entity";
-import { db } from "../../../common/knex/knex";
+import { db } from "../../../lib/knex/knex";
 
 const REFRESH_TOKEN_COLUMNS = ['id', 'user_id', 'token_hash', 'expires_at', 'created_at', 'revoked_at'];
 

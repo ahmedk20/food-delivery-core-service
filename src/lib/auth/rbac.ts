@@ -1,5 +1,7 @@
 import {Request, Response, NextFunction} from "express";
-import {permissionCacheService} from "../../app/rbac/service/permission-cache.service";
+import {container} from "../di/container";
+import {TOKENS} from "../di/tokens";
+import {PermissionCacheService} from "../../app/rbac/service/permission-cache.service";
 import {SystemRole} from "../../app/user/enums";
 import {NotAuthenticated} from "./errors";
 
@@ -23,6 +25,7 @@ export function rbac(options: RBACOptions) {
             }
 
             if (req.user.role == SystemRole.RESTAURANT_USER) {
+                const permissionCacheService = container.resolve<PermissionCacheService>(TOKENS.PermissionCacheService);
                 const permissions = await permissionCacheService.getPermissions(req.user.restaurantRole!);
                 if (!permissionCacheService.hasPermission(permissions, resource, action)) {
                     return res.status(403).json({ error: "Permission denied" });

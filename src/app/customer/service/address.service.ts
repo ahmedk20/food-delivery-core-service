@@ -9,6 +9,7 @@ import {
 } from "../repository/address.repo";
 import { Address } from "../entity/address.entity";
 import { AddressNotFound } from "../errors";
+import {injectable} from "tsyringe";
 
 function toResponse(address: Address) {
     return {
@@ -25,6 +26,7 @@ function toResponse(address: Address) {
         isDefault: address.isDefault,
     };
 }
+@injectable()
 
 export class AddressService {
     getAddresses = async (userId: number) => {
@@ -62,4 +64,3 @@ export class AddressService {
     }
 }
 
-export const addressService = new AddressService();

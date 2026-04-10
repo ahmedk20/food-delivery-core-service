@@ -1,13 +1,18 @@
 import {NextFunction, Response, Request} from "express";
-import {validateBody} from "../../../common/validation/validate";
+import {validateBody} from "../../../lib/validation/validate";
 import {CreateMemberDTO, UpdateMemberDTO, UpdateMemberBranchesDTO} from "../dto/member.dto";
-import {memberService} from "../service/member.service";
+import {MemberService} from "../service/member.service";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
+@injectable()
 export class MemberController {
+    constructor(@inject(TOKENS.MemberService) private readonly memberService: MemberService) {}
+
     createMember = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const data = await validateBody(CreateMemberDTO, req.body);
-            const result = await memberService.createMember(Number(req.params.restaurantId), data);
+            const result = await this.memberService.createMember(Number(req.params.restaurantId), data);
             res.status(200).send(result);
         } catch (error) {
             next(error);
@@ -16,7 +21,7 @@ export class MemberController {
 
     listMembers = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const result = await memberService.listMembers(Number(req.params.restaurantId));
+            const result = await this.memberService.listMembers(Number(req.params.restaurantId));
             res.status(200).send(result);
         } catch (error) {
             next(error);
@@ -26,7 +31,7 @@ export class MemberController {
     updateMember = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const data = await validateBody(UpdateMemberDTO, req.body);
-            await memberService.updateMember(
+            await this.memberService.updateMember(
                 Number(req.params.restaurantId),
                 Number(req.params.memberId),
                 data
@@ -39,7 +44,7 @@ export class MemberController {
 
     deleteMember = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            await memberService.deleteMember(
+            await this.memberService.deleteMember(
                 Number(req.params.restaurantId),
                 Number(req.params.memberId)
             );
@@ -52,7 +57,7 @@ export class MemberController {
     updateMemberBranches = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const data = await validateBody(UpdateMemberBranchesDTO, req.body);
-            await memberService.updateMemberBranches(
+            await this.memberService.updateMemberBranches(
                 Number(req.params.restaurantId),
                 Number(req.params.memberId),
                 data
@@ -65,12 +70,10 @@ export class MemberController {
 
     getRolePermissions = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const result = await memberService.getRolePermissions(req.params.role as string);
+            const result = await this.memberService.getRolePermissions(req.params.role as string);
             res.status(200).send(result);
         } catch (error) {
             next(error);
         }
     }
 }
-
-export const memberController = new MemberController();

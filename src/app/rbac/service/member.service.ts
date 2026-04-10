@@ -1,6 +1,6 @@
 import {Knex} from "knex";
-import {db} from "../../../common/knex/knex";
-import {toMs} from "../../../common/utils/time";
+import {db} from "../../../lib/knex/knex";
+import {toMs} from "../../../pkg/utils/time";
 import {createPasswordReset} from "../../auth/repository/password-reset.repo";
 import {generateOTP, hashOTP} from "../../auth/utils/password.util";
 import {SystemRole} from "../../user/enums";
@@ -24,10 +24,13 @@ import {
     deleteMember as deleteMemberRepo,
 } from "../repository/restaurant_member.repo";
 import {findRoleByName} from "../repository/role.repo";
-import AppError from "../../../common/error/AppError";
+import AppError from "../../../lib/error/AppError";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
+@injectable()
 export class MemberService {
-    constructor(private readonly userService: UserService) {}
+    constructor(@inject(TOKENS.UserService) private readonly userService: UserService) {}
 
     private async validateBranchOwnership(branchIds: number[], restaurantId: number): Promise<void> {
         if (branchIds.length === 0) return;
@@ -188,4 +191,3 @@ export class MemberService {
     }
 }
 
-export const memberService = new MemberService(new UserService());

@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt"
-import {env} from "../../../common/config/env";
+import {env} from "../../../lib/config/env";
 import crypto,{ timingSafeEqual } from "crypto";
 
 

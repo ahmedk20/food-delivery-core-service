@@ -16,15 +16,19 @@ import {
 } from "../dto/restaurant.dto";
 import {RestaurantNotFoundError} from "../errors";
 import {SystemRole} from "../../user/enums";
-import {db} from "../../../common/knex/knex";
-import {UnAuthorisedError} from "../../../common/auth/errors";
-import {userService, UserService} from "../../user/service/user.service";
-import {memberService, MemberService} from "../../rbac/service/member.service";
+import {db} from "../../../lib/knex/knex";
+import {UnAuthorisedError} from "../../../lib/auth/errors";
+import {UserService} from "../../user/service/user.service";
+import {MemberService} from "../../rbac/service/member.service";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
+
+@injectable()
 
 export class RestaurantService {
     constructor(
-        private readonly userService: UserService,
-        private readonly memberService: MemberService,
+       @inject(TOKENS.UserService) private readonly userService: UserService,
+       @inject(TOKENS.MemberService) private readonly memberService: MemberService,
     ) {}
 
     create = async (userId: number, data: RegisterRestaurantDTO, trx: Knex) => {
@@ -168,4 +172,3 @@ export class RestaurantService {
     }
 }
 
-export const restaurantService = new RestaurantService(userService, memberService);

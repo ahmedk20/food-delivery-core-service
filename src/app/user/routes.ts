@@ -1,8 +1,12 @@
 import {Router} from "express";
-import {userController} from "./controller/user.controller";
-import {authenticate} from "../../common/auth/guard";
+import {container} from "../../lib/di/container";
+import {TOKENS} from "../../lib/di/tokens";
+import {UserController} from "./controller/user.controller";
+import {authenticate} from "../../lib/auth/guard";
+
+const ctrl = container.resolve<UserController>(TOKENS.UserController);
 
 export const userRouter = Router();
 
-userRouter.get('/me', authenticate, userController.getMe);
-userRouter.patch('/me', authenticate, userController.updateMe);
+userRouter.get('/me', authenticate, ctrl.getMe);
+userRouter.patch('/me', authenticate, ctrl.updateMe);

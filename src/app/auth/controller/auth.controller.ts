@@ -1,13 +1,14 @@
-import {authService, AuthService} from "../service/auth.service";
+import {AuthService} from "../service/auth.service";
 import {Request,Response,NextFunction} from "express";
-import {validateBody} from "../../../common/validation/validate";
+import {validateBody} from "../../../lib/validation/validate";
 import {LoginDTO, RegisterDTO,ForgetPasswordDTO,ResetPasswordDTO} from "../dto/auth.dto";
-import {setAuthCookies} from "../../../common/auth/set-auth-cookies";
+import {setAuthCookies} from "../../../lib/auth/set-auth-cookies";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
+@injectable()
 export class AuthController {
-    constructor(private readonly authService: AuthService) {
-
-    }
+    constructor(@inject(TOKENS.AuthService) private readonly authService: AuthService) {}
     register = async(req: Request, res: Response, next: NextFunction) => {
         try{
             // 1. validate req.body
@@ -95,4 +96,3 @@ export class AuthController {
 
 }
 
-export const authController = new AuthController(authService);

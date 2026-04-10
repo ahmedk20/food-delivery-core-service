@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from "express";
-import { addressService, AddressService } from "../service/address.service";
-import { validateBody } from "../../../common/validation/validate";
+import { AddressService } from "../service/address.service";
+import { validateBody } from "../../../lib/validation/validate";
 import { CreateAddressDto, UpdateAddressDto } from "../dto/address.dto";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
+@injectable()
 export class AddressController {
-    constructor(private readonly addressService: AddressService) {}
+    constructor(@inject(TOKENS.AddressService) private readonly addressService: AddressService) {}
 
     getAddresses = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -46,5 +49,3 @@ export class AddressController {
         }
     }
 }
-
-export const addressController = new AddressController(addressService);

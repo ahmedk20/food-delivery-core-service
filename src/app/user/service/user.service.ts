@@ -6,6 +6,7 @@ import {hashPassword} from "../../auth/utils/password.util";
 import {SystemRole} from "../enums";
 import {UserAlreadyExists} from "../../auth/errors";
 import {Knex} from "knex";
+import {injectable} from "tsyringe";
 
 export interface CreateUserData {
     email: string;
@@ -15,6 +16,7 @@ export interface CreateUserData {
     systemRole: SystemRole;
 }
 
+@injectable()
 export class UserService {
 
     create = async (data: CreateUserData, trx?: Knex): Promise<User> => {
@@ -64,5 +66,3 @@ export class UserService {
         };
     }
 }
-
-export const userService = new UserService();

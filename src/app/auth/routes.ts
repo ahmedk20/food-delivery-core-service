@@ -1,11 +1,15 @@
 import {Router} from "express";
-import {authController} from "./controller/auth.controller";
+import {container} from "../../lib/di/container";
+import {TOKENS} from "../../lib/di/tokens";
+import {AuthController} from "./controller/auth.controller";
 
-export const authRouter  =  Router()
+const ctrl = container.resolve<AuthController>(TOKENS.AuthController);
 
-authRouter.post('/register',authController.register)
-authRouter.post('/login',authController.login)
-authRouter.post('/refresh', authController.refresh);
-authRouter.post('/logout', authController.logout);
-authRouter.post('/forget-password', authController.forgetPassword);
-authRouter.post('/reset-password', authController.resetPassword);
+export const authRouter = Router()
+
+authRouter.post('/register', ctrl.register)
+authRouter.post('/login', ctrl.login)
+authRouter.post('/refresh', ctrl.refresh);
+authRouter.post('/logout', ctrl.logout);
+authRouter.post('/forget-password', ctrl.forgetPassword);
+authRouter.post('/reset-password', ctrl.resetPassword);

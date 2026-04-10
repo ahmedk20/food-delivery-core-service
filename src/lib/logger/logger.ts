@@ -10,7 +10,7 @@ interface LogObject extends LogMetadata {
     timestamp: number;
 }
 
-class Logger {
+export class Logger {
     private static instance: Logger;
 
     private constructor() {}

@@ -1,4 +1,4 @@
-import {UnAuthorisedError} from "../../../common/auth/errors";
+import {UnAuthorisedError} from "../../../lib/auth/errors";
 import {findRestaurantById} from "../../restaurant/repository/restaurant.repo";
 import {SystemRole} from "../../user/enums";
 import {CreateBranchDTO, UpdateBranchDTO, UpdateBranchStatusDTO} from "../dto/branch.dto";
@@ -11,6 +11,9 @@ import {
     updateBranchStatus,
 } from "../repository/branch.repository";
 import {BranchNotFoundError} from "../errors";
+import {injectable} from "tsyringe";
+
+@injectable()
 
 export class BranchService {
 
@@ -117,4 +120,3 @@ export class BranchService {
     }
 }
 
-export const branchService = new BranchService();

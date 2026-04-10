@@ -1,12 +1,14 @@
 import {Request, Response, NextFunction} from "express";
-import {validateBody} from "../../../common/validation/validate";
+import {validateBody} from "../../../lib/validation/validate";
 import {SystemRole} from "../../user/enums";
 import {CreateBranchDTO, UpdateBranchDTO, UpdateBranchStatusDTO} from "../dto/branch.dto";
-import {BranchService, branchService} from "../service/branch.service";
+import {BranchService} from "../service/branch.service";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
+@injectable()
 export class BranchController {
-    constructor(private readonly branchService: BranchService) {
-    }
+    constructor(@inject(TOKENS.BranchService) private readonly branchService: BranchService) {}
 
     create = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -20,8 +22,8 @@ export class BranchController {
 
     findNearby = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const results = await this.branchService.findNearby( Number(req.query.lat), Number(req.query.lng))
-            res.status(200).json({data :results});
+            const results = await this.branchService.findNearby(Number(req.query.lat), Number(req.query.lng))
+            res.status(200).json({data: results});
         } catch (err) {
             next(err);
         }
@@ -71,5 +73,3 @@ export class BranchController {
         }
     }
 }
-
-export const branchController = new BranchController(branchService)

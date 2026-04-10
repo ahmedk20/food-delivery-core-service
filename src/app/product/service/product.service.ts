@@ -1,4 +1,4 @@
-import {UnAuthorisedError} from "../../../common/auth/errors";
+import {UnAuthorisedError} from "../../../lib/auth/errors";
 import {RestaurantNotFoundError} from "../../restaurant/errors";
 import {findRestaurantById} from "../../restaurant/repository/restaurant.repo";
 import {SystemRole} from "../../user/enums";
@@ -15,6 +15,9 @@ import {
 } from "../repository/product.repository";
 import {findOrCreateCategory, findCategoriesByRestaurant} from "../repository/category.repository";
 import {updateBranchDetails} from "../repository/product-branch-details.repository";
+import {injectable} from "tsyringe";
+
+@injectable()
 
 export class ProductService {
 
@@ -117,4 +120,3 @@ export class ProductService {
     }
 }
 
-export const productService = new ProductService();

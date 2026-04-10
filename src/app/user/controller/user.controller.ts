@@ -1,31 +1,30 @@
-import {userService,UserService} from "../service/user.service";
-import {Request, Response,NextFunction} from "express";
-import {validateBody} from "../../../common/validation/validate";
+import {UserService} from "../service/user.service";
+import {Request, Response, NextFunction} from "express";
+import {validateBody} from "../../../lib/validation/validate";
 import {UpdateMeDto} from "../dto/updateme.dto";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
+@injectable()
 export class UserController {
-    constructor(private readonly userService: UserService) {
+    constructor(@inject(TOKENS.UserService) private readonly userService: UserService) {}
 
-    }
-
-    getMe = async(req: Request, res: Response, next : NextFunction) => {
+    getMe = async(req: Request, res: Response, next: NextFunction) => {
         try {
             const user = await this.userService.getByUserId(req.user?.userId!)
             res.status(200).json(user)
-        }catch(err){
+        } catch(err) {
             next(err);
         }
     }
 
-    updateMe = async(req: Request, res: Response, next : NextFunction) => {
+    updateMe = async(req: Request, res: Response, next: NextFunction) => {
         try {
             const data = await validateBody(UpdateMeDto, req.body);
             const user = await this.userService.updateByUserId(req.user?.userId!, data);
             res.status(200).json({ message: 'Profile updated', user });
-        }catch(err){
+        } catch(err) {
             next(err);
         }
     }
 }
-
-export const userController = new UserController(userService)

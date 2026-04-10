@@ -1,6 +1,6 @@
 import {SignJWT,jwtVerify,decodeJwt} from "jose";
 import { createSecretKey } from 'crypto'
-import {env} from "../../../common/config/env";
+import {env} from "../../../lib/config/env";
 
 
 export interface JwtPayload {
@@ -45,6 +45,9 @@ export async function verifyToken (token:string): Promise<JwtPayload> {
         userId:payload.userId as number,
         email:payload.email as string,
         role:payload.role as string,
+        ...(payload.restaurantId !== undefined && { restaurantId: payload.restaurantId as number }),
+        ...(payload.restaurantRole !== undefined && { restaurantRole: payload.restaurantRole as string }),
+        ...(payload.branchIds !== undefined && { branchIds: payload.branchIds as number[] }),
 
     } as JwtPayload
 }
@@ -58,6 +61,9 @@ export async function verifyRefreshToken(token: string): Promise<JwtPayload> {
         userId: payload.userId as number,
         email: payload.email as string,
         role: payload.role as string,
+        ...(payload.restaurantId !== undefined && { restaurantId: payload.restaurantId as number }),
+        ...(payload.restaurantRole !== undefined && { restaurantRole: payload.restaurantRole as string }),
+        ...(payload.branchIds !== undefined && { branchIds: payload.branchIds as number[] }),
     } as JwtPayload;
 }
 

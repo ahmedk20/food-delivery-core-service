@@ -1,29 +1,33 @@
 import {Router} from "express";
-import {authenticate} from "../../common/auth/guard";
-import {productController} from "./controller/product.controller";
-import {requireRestaurantMember, requireBranchAccess, rbac} from "../../common/auth/rbac";
+import {container} from "../../lib/di/container";
+import {TOKENS} from "../../lib/di/tokens";
+import {ProductController} from "./controller/product.controller";
+import {authenticate} from "../../lib/auth/guard";
+import {requireRestaurantMember, requireBranchAccess, rbac} from "../../lib/auth/rbac";
+
+const ctrl = container.resolve<ProductController>(TOKENS.ProductController);
 
 export const productRouter = Router();
 
-productRouter.get('/restaurants/:restaurantId/categories', productController.findCategories);
+productRouter.get('/restaurants/:restaurantId/categories', ctrl.findCategories);
 productRouter.get('/restaurants/:restaurantId/products',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:product", action: "read"}),
-    productController.findByRestaurant
+    ctrl.findByRestaurant
 );
-productRouter.get('/branches/:branchId/products', productController.findByBranch);
-productRouter.get('/products/:id', productController.findById);
+productRouter.get('/branches/:branchId/products', ctrl.findByBranch);
+productRouter.get('/products/:id', ctrl.findById);
 productRouter.post('/restaurants/:restaurantId/products',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:product", action: "create"}),
-    productController.create
+    ctrl.create
 );
 productRouter.patch('/products/:id',
     authenticate,
     requireBranchAccess('branchId'),
     rbac({resource: "core:product", action: "update"}),
-    productController.update
+    ctrl.update
 );
-productRouter.delete('/products/:id', authenticate, productController.delete);
+productRouter.delete('/products/:id', authenticate, ctrl.delete);

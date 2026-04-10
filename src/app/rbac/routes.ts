@@ -1,43 +1,47 @@
 import {Router} from "express";
-import {authenticate} from "../../common/auth/guard";
-import {requireRestaurantMember, rbac} from "../../common/auth/rbac";
-import {memberController} from "./controller/member.controller";
+import {container} from "../../lib/di/container";
+import {TOKENS} from "../../lib/di/tokens";
+import {MemberController} from "./controller/member.controller";
+import {authenticate} from "../../lib/auth/guard";
+import {requireRestaurantMember, rbac} from "../../lib/auth/rbac";
+
+const ctrl = container.resolve<MemberController>(TOKENS.MemberController);
 
 export const rbacRouter = Router();
 
-rbacRouter.get('/roles/:role/permissions', memberController.getRolePermissions);
+rbacRouter.get('/roles/:role/permissions', ctrl.getRolePermissions);
 
 rbacRouter.post('/restaurants/:restaurantId/members',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:member", action: 'create'}),
-    memberController.createMember
+    ctrl.createMember
 );
 
 rbacRouter.get('/restaurants/:restaurantId/members',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:member", action: 'read'}),
-    memberController.listMembers
+    ctrl.listMembers
 );
 
 rbacRouter.patch('/restaurants/:restaurantId/members/:memberId',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:member", action: 'update'}),
-    memberController.updateMember
+    ctrl.updateMember
 );
 
 rbacRouter.delete('/restaurants/:restaurantId/members/:memberId',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:member", action: 'delete'}),
-    memberController.deleteMember
+    ctrl.deleteMember
 );
 
 rbacRouter.put('/restaurants/:restaurantId/members/:memberId/branches',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:member", action: 'update'}),
-    memberController.updateMemberBranches
+    ctrl.updateMemberBranches
 );

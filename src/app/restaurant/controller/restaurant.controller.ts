@@ -1,15 +1,18 @@
 import { Request, Response, NextFunction } from "express";
-import { RestaurantService,restaurantService } from "../service/restaurant.service";
-import { validateBody } from "../../../common/validation/validate";
+import { RestaurantService } from "../service/restaurant.service";
+import { validateBody } from "../../../lib/validation/validate";
 import {
     CreateRestaurantDTO,
     UpdateRestaurantDTO,
     UpdateRestaurantStatusDTO,
 } from "../dto/restaurant.dto";
 import { SystemRole } from "../../user/enums";
+import {inject, injectable} from "tsyringe";
+import {TOKENS} from "../../../lib/di/tokens";
 
+@injectable()
 export class RestaurantController {
-    constructor(private readonly restaurantService: RestaurantService) {}
+    constructor(@inject(TOKENS.RestaurantService) private readonly restaurantService: RestaurantService) {}
 
     create = async (req: Request, res: Response, next: NextFunction) => {
         try {
@@ -63,7 +66,7 @@ export class RestaurantController {
         }
     };
 
-    getAll=async(req:Request,res:Response,next:NextFunction)=>{
+    getAll = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const restaurants = await this.restaurantService.findAll();
             res.status(200).json(restaurants);
@@ -72,5 +75,3 @@ export class RestaurantController {
         }
     }
 }
-
-export const restaurantController = new RestaurantController(restaurantService);
