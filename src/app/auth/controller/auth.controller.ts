@@ -5,6 +5,7 @@ import {LoginDTO, RegisterDTO,ForgetPasswordDTO,ResetPasswordDTO} from "../dto/a
 import {setAuthCookies} from "../../../lib/auth/set-auth-cookies";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import { sendSuccess } from "../../../lib/http/response";
 
 @injectable()
 export class AuthController {
@@ -18,7 +19,7 @@ export class AuthController {
             setAuthCookies(res,result.accessToken, result.refreshToken);
 
             // 3. respond
-            res.status(201).json(result);
+            sendSuccess(res,result,201);
         } catch(err) {
             next(err);
         }
@@ -31,7 +32,7 @@ export class AuthController {
             const result = await this.authService.login(data);
             setAuthCookies(res,result.accessToken, result.refreshToken);
 
-            res.status(200).json(result);
+            sendSuccess(res,result,201);
         }catch(err) {
             next(err);
         }
@@ -47,7 +48,7 @@ export class AuthController {
             }
             const result = await this.authService.refresh(rawToken);
             setAuthCookies(res, result.accessToken, result.refreshToken);
-            res.status(200).json({ message: 'Token refreshed' });
+            sendSuccess(res,{ message: 'Token refreshed' });
         } catch(err) {
             next(err);
         }
@@ -60,7 +61,7 @@ export class AuthController {
             await this.authService.logout(rawToken);
             res.clearCookie('access_token');
             res.clearCookie('refresh_token', { path: '/api/auth' });
-            res.status(200).json({ message: 'Logged out successfully' });
+            sendSuccess(res,{ message: 'Logged out successfully' });
         } catch(err) {
             next(err);
         }
@@ -71,7 +72,7 @@ export class AuthController {
         try{
             const data = await validateBody(ForgetPasswordDTO, req.body);
             await this.authService.forgetPassword(data);
-            res.status(200).json({
+            sendSuccess(res,{
                 "message": "Email Sent with OTP",
             })
         }
@@ -85,7 +86,7 @@ export class AuthController {
         try{
             const data = await validateBody(ResetPasswordDTO, req.body);
             await this.authService.resetPassword(data);
-            res.status(200).json({
+            sendSuccess(res,{
                 "message": "Password reset successfully, please login again",
             })
         }
