@@ -9,6 +9,7 @@ import {
 import { SystemRole } from "../../user/enums";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import {sendSuccess} from "../../../lib/http/response";
 
 @injectable()
 export class RestaurantController {
@@ -21,11 +22,11 @@ export class RestaurantController {
                 req.user?.role as SystemRole,
                 data
             );
-            res.status(201).json({
+            sendSuccess(res, {
                 message: "Restaurant and owner created successfully",
                 restaurant: result.restaurant,
                 owner: result.owner,
-            });
+            }, 201);
         } catch (error) {
             next(error);
         }
@@ -40,10 +41,7 @@ export class RestaurantController {
                 req.user?.role as SystemRole,
                 data
             );
-            res.status(200).json({
-                message: "Restaurant updated successfully",
-                restaurant,
-            });
+            sendSuccess(res, { message: "Restaurant updated successfully", restaurant });
         } catch (error) {
             next(error);
         }
@@ -57,10 +55,7 @@ export class RestaurantController {
                 req.user?.role as SystemRole,
                 data
             );
-            res.status(200).json({
-                message: "Restaurant status updated successfully",
-                restaurant,
-            });
+            sendSuccess(res, { message: "Restaurant status updated successfully", restaurant });
         } catch (error) {
             next(error);
         }
@@ -69,7 +64,7 @@ export class RestaurantController {
     getAll = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const restaurants = await this.restaurantService.findAll();
-            res.status(200).json(restaurants);
+            sendSuccess(res, restaurants);
         } catch (error) {
             next(error);
         }

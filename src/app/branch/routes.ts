@@ -4,6 +4,7 @@ import {TOKENS} from "../../lib/di/tokens";
 import {BranchController} from "./controller/branch.controller";
 import {authenticate} from "../../lib/auth/guard";
 import {requireRestaurantMember, requireBranchAccess, rbac} from "../../lib/auth/rbac";
+import {idempotency} from "../../lib/http/idempotency";
 
 const ctrl = container.resolve<BranchController>(TOKENS.BranchController);
 
@@ -15,6 +16,7 @@ branchRouter.post('/restaurants/:restaurantId/branches',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:branch", action: "create"}),
+    idempotency(),
     ctrl.create
 )
 branchRouter.patch('/branches/:id',

@@ -34,12 +34,23 @@ const envSchema = z.object({
 
 
     REDIS_URL: z.string().default('redis://localhost:6379'),
+    REDIS_HOST: z.string().default('localhost'),
+    REDIS_PORT: z.coerce.number().positive().default(6379),
+    REDIS_PASSWORD: z.string().optional(),
 
     ACCESS_SECRET: z.string(),
     REFRESH_SECRET: z.string(),
     ACCESS_EXPIRES_IN: z.string(),
     REFRESH_EXPIRES_IN: z.string(),
     BCRYPT_SALT_ROUNDS:  z.coerce.number().min(4).max(15),
+
+    CORS_ORIGINS: z.string().default("*"),
+
+    EMAIL_HOST:     z.string().default('smtp.mailtrap.io'),
+    EMAIL_PORT:     z.coerce.number().positive().default(587),
+    EMAIL_USER:     z.string().default(''),
+    EMAIL_PASSWORD: z.string().default(''),
+    EMAIL_FROM:     z.string().default('Food Delivery <noreply@fooddelivery.com>'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -59,6 +70,9 @@ export const env = {
 
     redis: {
         url: data.REDIS_URL,
+        host: data.REDIS_HOST,
+        password: data.REDIS_PASSWORD,
+        port: data.REDIS_PORT,
     },
 
     db: {
@@ -82,4 +96,16 @@ export const env = {
         saltRounds: data.BCRYPT_SALT_ROUNDS,
 
     }
+    ,
+    cors: {
+        origins: data.CORS_ORIGINS.split(',').map(origin => origin.trim()),
+    },
+
+    email: {
+        host:     data.EMAIL_HOST,
+        port:     data.EMAIL_PORT,
+        user:     data.EMAIL_USER,
+        password: data.EMAIL_PASSWORD,
+        from:     data.EMAIL_FROM,
+    },
 };

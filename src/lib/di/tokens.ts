@@ -18,5 +18,8 @@ export const TOKENS = {
     CustomerController: Symbol('CustomerController'),
     AddressController: Symbol('AddressController'),
 
+    CacheProvider:   Symbol('CacheProvider'),
+    EmailProvider:   Symbol('EmailProvider'),
+
     Logger: Symbol('Logger'),
 }

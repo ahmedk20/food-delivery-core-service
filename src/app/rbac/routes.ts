@@ -4,6 +4,7 @@ import {TOKENS} from "../../lib/di/tokens";
 import {MemberController} from "./controller/member.controller";
 import {authenticate} from "../../lib/auth/guard";
 import {requireRestaurantMember, rbac} from "../../lib/auth/rbac";
+import {idempotency} from "../../lib/http/idempotency";
 
 const ctrl = container.resolve<MemberController>(TOKENS.MemberController);
 
@@ -15,6 +16,7 @@ rbacRouter.post('/restaurants/:restaurantId/members',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:member", action: 'create'}),
+    idempotency(),
     ctrl.createMember
 );
 

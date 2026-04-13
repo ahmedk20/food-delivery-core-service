@@ -5,6 +5,7 @@ import {CreateBranchDTO, UpdateBranchDTO, UpdateBranchStatusDTO} from "../dto/br
 import {BranchService} from "../service/branch.service";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import {sendSuccess} from "../../../lib/http/response";
 
 @injectable()
 export class BranchController {
@@ -14,7 +15,7 @@ export class BranchController {
         try {
             const data = await validateBody(CreateBranchDTO, req.body);
             const branch = await this.branchService.create(Number(req.params.restaurantId), req.user?.userId!, req.user?.role! as SystemRole, data);
-            res.status(201).json({message: "Branch added", branch});
+            sendSuccess(res, { message: "Branch added", branch }, 201);
         } catch (err) {
             next(err);
         }
@@ -22,8 +23,8 @@ export class BranchController {
 
     findNearby = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const results = await this.branchService.findNearby(Number(req.query.lat), Number(req.query.lng))
-            res.status(200).json({data: results});
+            const results = await this.branchService.findNearby(Number(req.query.lat), Number(req.query.lng));
+            sendSuccess(res, results);
         } catch (err) {
             next(err);
         }
@@ -31,8 +32,11 @@ export class BranchController {
 
     findByRestaurant = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const branches = await this.branchService.findByRestaurant(Number(req.params.restaurantId));
-            res.status(200).json({data: branches});
+            const result = await this.branchService.findByRestaurant(
+                Number(req.params.restaurantId),
+                req.query as Record<string, any>,
+            );
+            sendSuccess(res, result.data, 200, result.meta);
         } catch (err) {
             next(err);
         }
@@ -47,10 +51,7 @@ export class BranchController {
                 req.user?.role! as SystemRole,
                 data
             );
-            res.status(200).json({
-                message: "Branch updated successfully",
-                branch,
-            });
+            sendSuccess(res, { message: "Branch updated successfully", branch });
         } catch (err) {
             next(err);
         }
@@ -64,10 +65,7 @@ export class BranchController {
                 req.user?.role! as SystemRole,
                 data
             );
-            res.status(200).json({
-                message: "Branch status updated successfully",
-                branch,
-            });
+            sendSuccess(res, { message: "Branch status updated successfully", branch });
         } catch (err) {
             next(err);
         }

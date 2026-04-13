@@ -1,6 +1,7 @@
 import {Knex} from "knex";
 import {db} from "../../../lib/knex/knex";
 import {Product} from "../entity/product.entity";
+import {applyCursorPagination, applyFilters, buildPaginationResult, FilterParams, PaginationParams} from "../../../lib/http/pagination/cursor-pagination";
 
 const PRODUCT_COLUMNS = ['id', 'name', 'description', 'image_url', 'restaurant_id', 'category_id', 'created_at', 'updated_at', 'deleted_at'];
 
@@ -70,16 +71,35 @@ export async function findProductByIdWithBranch(id: number, branchId: number) {
     };
 }
 
-export async function findProductsByRestaurant(restaurantId: number): Promise<Product[]> {
-    const rows = await db("products")
+export type ProductSortField = 'id' | 'name';
+export type ProductFilterField = 'name' | 'category_id';
+export type BranchProductFilterField = 'name' | 'category_id' | 'is_available';
+
+export async function findProductsByRestaurant(
+    restaurantId: number,
+    pagination: PaginationParams<Record<string, any>, ProductSortField>,
+    filters: FilterParams<Record<string, any>, ProductFilterField>[]
+) {
+    let query = db("products")
         .select(PRODUCT_COLUMNS)
         .where("restaurant_id", restaurantId)
         .whereNull("deleted_at");
-    return rows.map(toEntity);
+
+    query = applyFilters(query, filters);
+    query = applyCursorPagination(query, pagination);
+
+    const rawRows = await query;
+    const { rows, hasMore, nextCursor } = buildPaginationResult(rawRows, pagination.limit, pagination.sortBy, pagination.sortOrder);
+    return { data: rows.map(toEntity), meta: { hasMore, nextCursor } };
 }
 
-export async function findProductsByBranch(branchId: number, availableOnly = false) {
-    const query = db("products as p")
+export async function findProductsByBranch(
+    branchId: number,
+    pagination: PaginationParams<Record<string, any>, 'id'>,
+    filters: FilterParams<Record<string, any>, BranchProductFilterField>[],
+    availableOnly = false
+) {
+    let query = db("products as p")
         .join("product_branch_details as pbd", "p.id", "pbd.product_id")
         .leftJoin("product_categories as pc", "p.category_id", "pc.id")
         .where("pbd.branch_id", branchId)
@@ -96,20 +116,37 @@ export async function findProductsByBranch(branchId: number, availableOnly = fal
             "pbd.stock",
             "pbd.is_available",
         );
-    if (availableOnly) query.where("pbd.is_available", true);
-    const rows = await query;
-    return rows.map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        imageUrl: row.image_url,
-        restaurantId: row.restaurant_id,
-        categoryId: row.category_id,
-        categoryName: row.category_name,
-        price: row.price,
-        stock: row.stock,
-        isAvailable: row.is_available,
-    }));
+
+    if (availableOnly) query = query.where("pbd.is_available", true);
+    query = applyFilters(query, filters);
+
+    // Use qualified column p.id to avoid ambiguity in the JOIN (products, pbd, and pc all have id)
+    const { cursor, limit, sortOrder } = pagination;
+    if (cursor !== undefined && cursor !== null) {
+        query = query.where("p.id", sortOrder === "asc" ? ">" : "<", cursor);
+    }
+    query = query.orderBy("p.id", sortOrder).limit(limit + 1);
+
+    const rawRows = await query;
+    const hasMore = rawRows.length > limit;
+    const sliced = rawRows.slice(0, limit);
+    const nextCursor = hasMore ? sliced[sliced.length - 1].id : null;
+
+    return {
+        data: sliced.map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            imageUrl: row.image_url,
+            restaurantId: row.restaurant_id,
+            categoryId: row.category_id,
+            categoryName: row.category_name,
+            price: row.price,
+            stock: row.stock,
+            isAvailable: row.is_available,
+        })),
+        meta: { hasMore, nextCursor },
+    };
 }
 
 export async function updateProduct(id: number, data: Record<string, any>): Promise<Product> {

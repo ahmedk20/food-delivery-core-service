@@ -4,6 +4,7 @@ import {TOKENS} from "../../lib/di/tokens";
 import {ProductController} from "./controller/product.controller";
 import {authenticate} from "../../lib/auth/guard";
 import {requireRestaurantMember, requireBranchAccess, rbac} from "../../lib/auth/rbac";
+import {idempotency} from "../../lib/http/idempotency";
 
 const ctrl = container.resolve<ProductController>(TOKENS.ProductController);
 
@@ -22,6 +23,7 @@ productRouter.post('/restaurants/:restaurantId/products',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:product", action: "create"}),
+    idempotency(),
     ctrl.create
 );
 productRouter.patch('/products/:id',

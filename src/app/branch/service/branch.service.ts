@@ -9,9 +9,12 @@ import {
     findBranchById,
     updateBranch,
     updateBranchStatus,
+    BranchSortField,
+    BranchFilterField,
 } from "../repository/branch.repository";
 import {BranchNotFoundError} from "../errors";
 import {injectable} from "tsyringe";
+import {parsePaginationQuery, parseFilters} from "../../../lib/http/pagination/parse-query";
 
 @injectable()
 
@@ -22,9 +25,14 @@ export class BranchService {
         return rows;
     }
 
-    findByRestaurant = async (restaurantId: number) => {
-        const branches = await findBranchesByRestaurant(restaurantId);
-        return branches;
+    findByRestaurant = async (restaurantId: number, query: Record<string, any>) => {
+        const pagination = parsePaginationQuery<Record<string, any>, BranchSortField>(
+            query, ['id', 'label'], 'id'
+        );
+        const filters = parseFilters<Record<string, any>, BranchFilterField>(
+            query, ['label', 'is_active']
+        );
+        return await findBranchesByRestaurant(restaurantId, pagination, filters);
     }
 
     create = async (restaurantId: number, userId: number, userRole: SystemRole, data: CreateBranchDTO) => {

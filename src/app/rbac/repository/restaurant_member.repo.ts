@@ -2,6 +2,7 @@ import {Knex} from "knex";
 import {db} from "../../../lib/knex/knex";
 import {RestaurantMember} from "../entity/restaurant-member.entity";
 import {MemberStatus} from "../enums";
+import {applyFilters, FilterParams, PaginationParams} from "../../../lib/http/pagination/cursor-pagination";
 
 const MEMBER_COLUMNS = ['id','restaurant_id','user_id','role_id','status','created_at','updated_at'];
 
@@ -38,8 +39,15 @@ export async function activateMemberByUserId(userId:number, conn: Knex = db): Pr
     )
 }
 
-export async function findMembersByRestaurantId(restaurantId: number) {
-    return db("restaurant_members as rm")
+export type MemberSortField = 'id';
+export type MemberFilterField = 'status';
+
+export async function findMembersByRestaurantId(
+    restaurantId: number,
+    pagination: PaginationParams<Record<string, any>, MemberSortField>,
+    filters: FilterParams<Record<string, any>, MemberFilterField>[]
+) {
+    let query = db("restaurant_members as rm")
         .select(
             "rm.id",
             "rm.user_id as userId",
@@ -53,6 +61,22 @@ export async function findMembersByRestaurantId(restaurantId: number) {
         .join("users as u", "rm.user_id", "u.id")
         .join("roles as r", "rm.role_id", "r.id")
         .where("rm.restaurant_id", restaurantId);
+
+    query = applyFilters(query, filters);
+
+    // Use rm.id to avoid ambiguity — users, roles all have their own id
+    const { cursor, limit, sortOrder } = pagination;
+    if (cursor !== undefined && cursor !== null) {
+        query = query.where("rm.id", sortOrder === "asc" ? ">" : "<", cursor);
+    }
+    query = query.orderBy("rm.id", sortOrder).limit(limit + 1);
+
+    const rawRows = await query;
+    const hasMore = rawRows.length > limit;
+    const sliced = rawRows.slice(0, limit);
+    const nextCursor = hasMore ? sliced[sliced.length - 1].id : null;
+
+    return { data: sliced, meta: { hasMore, nextCursor } };
 }
 
 export async function findMemberWithRoleName(memberId: number): Promise<{member: RestaurantMember; roleName: string} | null> {

@@ -4,6 +4,7 @@ import {CreateMemberDTO, UpdateMemberDTO, UpdateMemberBranchesDTO} from "../dto/
 import {MemberService} from "../service/member.service";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import {sendSuccess} from "../../../lib/http/response";
 
 @injectable()
 export class MemberController {
@@ -13,7 +14,7 @@ export class MemberController {
         try {
             const data = await validateBody(CreateMemberDTO, req.body);
             const result = await this.memberService.createMember(Number(req.params.restaurantId), data);
-            res.status(200).send(result);
+            sendSuccess(res, result);
         } catch (error) {
             next(error);
         }
@@ -21,8 +22,11 @@ export class MemberController {
 
     listMembers = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const result = await this.memberService.listMembers(Number(req.params.restaurantId));
-            res.status(200).send(result);
+            const result = await this.memberService.listMembers(
+                Number(req.params.restaurantId),
+                req.query as Record<string, any>,
+            );
+            sendSuccess(res, result.data, 200, result.meta);
         } catch (error) {
             next(error);
         }
@@ -36,7 +40,7 @@ export class MemberController {
                 Number(req.params.memberId),
                 data
             );
-            res.status(200).send({ message: 'Member updated' });
+            sendSuccess(res, { message: 'Member updated' });
         } catch (error) {
             next(error);
         }
@@ -48,7 +52,7 @@ export class MemberController {
                 Number(req.params.restaurantId),
                 Number(req.params.memberId)
             );
-            res.status(200).send({ message: 'Member deleted' });
+            sendSuccess(res, { message: 'Member deleted' });
         } catch (error) {
             next(error);
         }
@@ -62,7 +66,7 @@ export class MemberController {
                 Number(req.params.memberId),
                 data
             );
-            res.status(200).send({ message: 'Member branches updated' });
+            sendSuccess(res, { message: 'Member branches updated' });
         } catch (error) {
             next(error);
         }
@@ -71,7 +75,7 @@ export class MemberController {
     getRolePermissions = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const result = await this.memberService.getRolePermissions(req.params.role as string);
-            res.status(200).send(result);
+            sendSuccess(res, result);
         } catch (error) {
             next(error);
         }

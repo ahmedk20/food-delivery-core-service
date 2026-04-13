@@ -4,6 +4,7 @@ import {validateBody} from "../../../lib/validation/validate";
 import {UpdateMeDto} from "../dto/updateme.dto";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import {sendSuccess} from "../../../lib/http/response";
 
 @injectable()
 export class UserController {
@@ -12,7 +13,7 @@ export class UserController {
     getMe = async(req: Request, res: Response, next: NextFunction) => {
         try {
             const user = await this.userService.getByUserId(req.user?.userId!)
-            res.status(200).json(user)
+            sendSuccess(res, user);
         } catch(err) {
             next(err);
         }
@@ -22,7 +23,7 @@ export class UserController {
         try {
             const data = await validateBody(UpdateMeDto, req.body);
             const user = await this.userService.updateByUserId(req.user?.userId!, data);
-            res.status(200).json({ message: 'Profile updated', user });
+            sendSuccess(res, { message: 'Profile updated', user });
         } catch(err) {
             next(err);
         }

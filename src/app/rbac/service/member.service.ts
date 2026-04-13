@@ -22,15 +22,22 @@ import {
     findMemberWithRoleName,
     updateMember as updateMemberRepo,
     deleteMember as deleteMemberRepo,
+    MemberSortField,
+    MemberFilterField,
 } from "../repository/restaurant_member.repo";
+import {parsePaginationQuery, parseFilters} from "../../../lib/http/pagination/parse-query";
 import {findRoleByName} from "../repository/role.repo";
 import AppError from "../../../lib/error/AppError";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import {IEmailProvider} from "../../../pkg/email/email.interface";
 
 @injectable()
 export class MemberService {
-    constructor(@inject(TOKENS.UserService) private readonly userService: UserService) {}
+    constructor(
+        @inject(TOKENS.UserService)    private readonly userService: UserService,
+        @inject(TOKENS.EmailProvider)  private readonly email: IEmailProvider,
+    ) {}
 
     private async validateBranchOwnership(branchIds: number[], restaurantId: number): Promise<void> {
         if (branchIds.length === 0) return;
@@ -104,8 +111,7 @@ export class MemberService {
                 createdAt: new Date(),
             }, trx);
 
-            // TODO: send email
-            console.log(`mocked email sent ${otp}`);
+            await this.email.sendMemberInvite(data.email, data.name, otp);
 
             await trx.commit();
 
@@ -124,9 +130,14 @@ export class MemberService {
         }
     }
 
-    async listMembers(restaurantId: number) {
-        const members = await findMembersByRestaurantId(restaurantId);
-        return { data: members };
+    async listMembers(restaurantId: number, query: Record<string, any>) {
+        const pagination = parsePaginationQuery<Record<string, any>, MemberSortField>(
+            query, ['id'], 'id'
+        );
+        const filters = parseFilters<Record<string, any>, MemberFilterField>(
+            query, ['status']
+        );
+        return await findMembersByRestaurantId(restaurantId, pagination, filters);
     }
 
     async updateMember(restaurantId: number, memberId: number, data: UpdateMemberDTO) {

@@ -4,6 +4,7 @@ import { validateBody } from "../../../lib/validation/validate";
 import { CreateAddressDto, UpdateAddressDto } from "../dto/address.dto";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import {sendSuccess} from "../../../lib/http/response";
 
 @injectable()
 export class AddressController {
@@ -11,8 +12,8 @@ export class AddressController {
 
     getAddresses = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const data = await this.addressService.getAddresses(req.user?.userId!);
-            res.status(200).json({ data });
+            const addresses = await this.addressService.getAddresses(req.user?.userId!);
+            sendSuccess(res, addresses);
         } catch (err) {
             next(err);
         }
@@ -22,7 +23,7 @@ export class AddressController {
         try {
             const dto = await validateBody(CreateAddressDto, req.body);
             const address = await this.addressService.addAddress(req.user?.userId!, dto);
-            res.status(201).json({ message: 'Address added', address });
+            sendSuccess(res, { message: 'Address added', address }, 201);
         } catch (err) {
             next(err);
         }
@@ -33,7 +34,7 @@ export class AddressController {
             const addressId = Number(req.params.addressId);
             const dto = await validateBody(UpdateAddressDto, req.body);
             const address = await this.addressService.updateAddress(req.user?.userId!, addressId, dto);
-            res.status(200).json({ message: 'Address updated', address });
+            sendSuccess(res, { message: 'Address updated', address });
         } catch (err) {
             next(err);
         }
@@ -43,7 +44,7 @@ export class AddressController {
         try {
             const addressId = Number(req.params.addressId);
             await this.addressService.deleteAddress(req.user?.userId!, addressId);
-            res.status(200).json({ message: 'Address deleted' });
+            sendSuccess(res, { message: 'Address deleted' });
         } catch (err) {
             next(err);
         }

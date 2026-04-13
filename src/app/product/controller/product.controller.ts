@@ -5,6 +5,7 @@ import {CreateProductDTO, UpdateProductDTO} from "../dto/product.dto";
 import {ProductService} from "../service/product.service";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
+import {sendSuccess} from "../../../lib/http/response";
 
 @injectable()
 export class ProductController {
@@ -19,7 +20,7 @@ export class ProductController {
                 req.user?.role! as SystemRole,
                 data,
             );
-            res.status(201).json({message: "Product created", product});
+            sendSuccess(res, { message: "Product created", product }, 201);
         } catch (err) {
             next(err);
         }
@@ -31,8 +32,9 @@ export class ProductController {
                 Number(req.params.restaurantId),
                 req.user?.userId!,
                 req.user?.role! as SystemRole,
+                req.query as Record<string, any>,
             );
-            res.status(200).json({data: results});
+            sendSuccess(res, results.data, 200, results.meta);
         } catch (err) {
             next(err);
         }
@@ -41,7 +43,7 @@ export class ProductController {
     findCategories = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const results = await this.productService.findCategories(Number(req.params.restaurantId));
-            res.status(200).json({data: results});
+            sendSuccess(res, results);
         } catch (err) {
             next(err);
         }
@@ -49,9 +51,11 @@ export class ProductController {
 
     findByBranch = async (req: Request, res: Response, next: NextFunction) => {
         try {
-            const availableOnly = req.query.availableOnly === 'true';
-            const results = await this.productService.findByBranch(Number(req.params.branchId), availableOnly);
-            res.status(200).json({data: results});
+            const results = await this.productService.findByBranch(
+                Number(req.params.branchId),
+                req.query as Record<string, any>,
+            );
+            sendSuccess(res, results.data, 200, results.meta);
         } catch (err) {
             next(err);
         }
@@ -61,7 +65,7 @@ export class ProductController {
         try {
             const branchId = req.query.branchId ? Number(req.query.branchId) : undefined;
             const product = await this.productService.findById(Number(req.params.id), branchId);
-            res.status(200).json(product);
+            sendSuccess(res, product);
         } catch (err) {
             next(err);
         }
@@ -78,7 +82,7 @@ export class ProductController {
                 data,
                 branchId,
             );
-            res.status(200).json({message: "Product updated", ...result});
+            sendSuccess(res, { message: "Product updated", ...result });
         } catch (err) {
             next(err);
         }
@@ -91,7 +95,7 @@ export class ProductController {
                 req.user?.userId!,
                 req.user?.role! as SystemRole,
             );
-            res.status(200).json({message: "Product deleted"});
+            sendSuccess(res, { message: "Product deleted" });
         } catch (err) {
             next(err);
         }

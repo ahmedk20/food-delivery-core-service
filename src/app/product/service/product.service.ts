@@ -12,7 +12,11 @@ import {
     findProductsByRestaurant,
     softDeleteProduct,
     updateProduct,
+    ProductSortField,
+    ProductFilterField,
+    BranchProductFilterField,
 } from "../repository/product.repository";
+import {parsePaginationQuery, parseFilters} from "../../../lib/http/pagination/parse-query";
 import {findOrCreateCategory, findCategoriesByRestaurant} from "../repository/category.repository";
 import {updateBranchDetails} from "../repository/product-branch-details.repository";
 import {injectable} from "tsyringe";
@@ -43,21 +47,34 @@ export class ProductService {
         });
     }
 
-    findByRestaurant = async (restaurantId: number, userId: number, userRole: SystemRole) => {
+    findByRestaurant = async (restaurantId: number, userId: number, userRole: SystemRole, query: Record<string, any>) => {
         const restaurant = await findRestaurantById(restaurantId);
         if (!restaurant) throw RestaurantNotFoundError;
         if (userRole !== SystemRole.SYSTEM_ADMIN && Number(restaurant.ownerId) !== Number(userId)) {
             throw UnAuthorisedError;
         }
-        return await findProductsByRestaurant(restaurantId);
+        const pagination = parsePaginationQuery<Record<string, any>, ProductSortField>(
+            query, ['id', 'name'], 'id'
+        );
+        const filters = parseFilters<Record<string, any>, ProductFilterField>(
+            query, ['name', 'category_id']
+        );
+        return await findProductsByRestaurant(restaurantId, pagination, filters);
     }
 
     findCategories = async (restaurantId: number) => {
         return await findCategoriesByRestaurant(restaurantId);
     }
 
-    findByBranch = async (branchId: number, availableOnly = false) => {
-        return await findProductsByBranch(branchId, availableOnly);
+    findByBranch = async (branchId: number, query: Record<string, any>) => {
+        const availableOnly = query.availableOnly === 'true';
+        const pagination = parsePaginationQuery<Record<string, any>, 'id'>(
+            query, ['id'], 'id'
+        );
+        const filters = parseFilters<Record<string, any>, BranchProductFilterField>(
+            query, ['name', 'category_id', 'is_available']
+        );
+        return await findProductsByBranch(branchId, pagination, filters, availableOnly);
     }
 
     findById = async (id: number, branchId?: number) => {
