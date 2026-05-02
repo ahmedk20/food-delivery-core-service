@@ -6,7 +6,7 @@ import {customerRouter} from "./app/customer/routes";
 import { restaurantRouter } from "./app/restaurant/routes";
 import { branchRouter } from "./app/branch/routes";
 import { productRouter } from "./app/product/routes";
-import { rbacRouter } from "./app/rbac/routes";
+import { rbacRouter } from "./app/member/routes";
 
 export const routes = Router();
 routes.use("/health", healthRouter);

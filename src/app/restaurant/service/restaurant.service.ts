@@ -19,7 +19,7 @@ import {SystemRole} from "../../user/enums";
 import {db} from "../../../lib/knex/knex";
 import {UnAuthorisedError} from "../../../lib/auth/errors";
 import {UserService} from "../../user/service/user.service";
-import {MemberService} from "../../rbac/service/member.service";
+import {MemberService} from "../../member/service/member.service";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
 
@@ -116,7 +116,7 @@ export class RestaurantService {
     ) => {
         const restaurant = await findRestaurantById(restaurantId);
         if (!restaurant) {
-            throw RestaurantNotFoundError;
+            throw RestaurantNotFoundError();
         }
 
         if (
@@ -128,7 +128,7 @@ export class RestaurantService {
 
         const updated = await updateRestaurant(restaurantId, data);
         if (!updated) {
-            throw RestaurantNotFoundError;
+            throw RestaurantNotFoundError();
         }
 
         return {
@@ -152,12 +152,12 @@ export class RestaurantService {
 
         const restaurant = await findRestaurantById(restaurantId);
         if (!restaurant) {
-            throw RestaurantNotFoundError;
+            throw RestaurantNotFoundError();
         }
 
         const updated = await updateRestaurantStatus(restaurantId, data.status);
         if (!updated) {
-            throw RestaurantNotFoundError;
+            throw RestaurantNotFoundError();
         }
 
         return {

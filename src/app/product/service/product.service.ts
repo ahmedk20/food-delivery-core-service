@@ -27,7 +27,7 @@ export class ProductService {
 
     create = async (restaurantId: number, userId: number, userRole: SystemRole, data: CreateProductDTO) => {
         const restaurant = await findRestaurantById(restaurantId);
-        if (!restaurant) throw RestaurantNotFoundError;
+        if (!restaurant) throw RestaurantNotFoundError();
         if (userRole !== SystemRole.SYSTEM_ADMIN && Number(restaurant.ownerId) !== Number(userId)) {
             throw UnAuthorisedError;
         }
@@ -49,7 +49,7 @@ export class ProductService {
 
     findByRestaurant = async (restaurantId: number, userId: number, userRole: SystemRole, query: Record<string, any>) => {
         const restaurant = await findRestaurantById(restaurantId);
-        if (!restaurant) throw RestaurantNotFoundError;
+        if (!restaurant) throw RestaurantNotFoundError();
         if (userRole !== SystemRole.SYSTEM_ADMIN && Number(restaurant.ownerId) !== Number(userId)) {
             throw UnAuthorisedError;
         }
@@ -80,20 +80,20 @@ export class ProductService {
     findById = async (id: number, branchId?: number) => {
         if (branchId) {
             const product = await findProductByIdWithBranch(id, branchId);
-            if (!product) throw ProductNotFoundError;
+            if (!product) throw ProductNotFoundError();
             return product;
         }
         const product = await findProductById(id);
-        if (!product) throw ProductNotFoundError;
+        if (!product) throw ProductNotFoundError();
         return product;
     }
 
     update = async (productId: number, userId: number, userRole: SystemRole, data: UpdateProductDTO, branchId?: number) => {
         const product = await findProductById(productId);
-        if (!product) throw ProductNotFoundError;
+        if (!product) throw ProductNotFoundError();
 
         const restaurant = await findRestaurantById(product.restaurantId);
-        if (!restaurant) throw RestaurantNotFoundError;
+        if (!restaurant) throw RestaurantNotFoundError();
         if (userRole !== SystemRole.SYSTEM_ADMIN && Number(restaurant.ownerId) !== Number(userId)) {
             throw UnAuthorisedError;
         }
@@ -125,10 +125,10 @@ export class ProductService {
 
     delete = async (productId: number, userId: number, userRole: SystemRole) => {
         const product = await findProductById(productId);
-        if (!product) throw ProductNotFoundError;
+        if (!product) throw ProductNotFoundError();
 
         const restaurant = await findRestaurantById(product.restaurantId);
-        if (!restaurant) throw RestaurantNotFoundError;
+        if (!restaurant) throw RestaurantNotFoundError();
         if (userRole !== SystemRole.SYSTEM_ADMIN && Number(restaurant.ownerId) !== Number(userId)) {
             throw UnAuthorisedError;
         }

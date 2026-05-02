@@ -11,9 +11,9 @@ import {RestaurantService} from "../../restaurant/service/restaurant.service";
 import {RestaurantDataRequiredError} from "../../restaurant/errors";
 import {db} from "../../../lib/knex/knex";
 import {UserService} from "../../user/service/user.service";
-import {MemberService} from "../../rbac/service/member.service";
-import {findRestaurantMemberWithRole} from "../../rbac/repository/restaurant_member.repo";
-import {findBranchIdsByMemberId} from "../../rbac/repository/member-branch.repo";
+import {MemberService} from "../../member/service/member.service";
+import {findRestaurantMemberWithRole} from "../../member/repository/restaurant_member.repo";
+import {findBranchIdsByMemberId} from "../../member/repository/member-branch.repo";
 import {inject, injectable} from "tsyringe";
 import {TOKENS} from "../../../lib/di/tokens";
 import {ICacheProvider} from "../../../pkg/cache/cache.interface";
@@ -76,7 +76,7 @@ export class AuthService {
 
             if (data.role === SystemRole.RESTAURANT_USER) {
                 if (data.restaurant == undefined) {
-                    throw RestaurantDataRequiredError;
+                    throw RestaurantDataRequiredError();
                 }
                 restaurant = await this.restaurantService.create(user.id, data.restaurant, trx);
                 await this.memberService.createOwnerMember(restaurant.id, user.id, trx);

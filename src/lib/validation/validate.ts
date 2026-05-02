@@ -8,9 +8,6 @@ export async function validateBody <T extends Object>(cls: new () => T, body: un
     const errors = await validate(instance, {whitelist: true});
 
     if(errors.length > 0) {
-        console.log(errors[0].children)
-        console.log(errors.length)
-
         const messages = errors.flatMap((e) => Object.values(e.constraints ?? {}));
         throw new AppError(messages.join('\n'), 400)
 

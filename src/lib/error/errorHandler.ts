@@ -3,18 +3,19 @@ import logger from "../logger/logger.js";
 import type AppError from "./AppError.js";
 
 export function errorHandler(err: AppError, req: Request, res: Response, _next: NextFunction) {
-    const operational = err.isOperational;
+    const statusCode = err.statusCode ?? 500;
+    const operational = err.isOperational ?? false;
 
     logger.error(err.message, {
-        statusCode: err.statusCode,
+        statusCode,
         stack: err.stack,
-        operational: operational,
+        operational,
         body: req.body,
         correlationId: req.correlationId
     })
 
-    if(operational){
-        return res.status(err.statusCode).json({
+    if (operational) {
+        return res.status(statusCode).json({
             error: err.message,
         })
     }

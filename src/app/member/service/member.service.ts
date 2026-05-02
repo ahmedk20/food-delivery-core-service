@@ -49,7 +49,7 @@ export class MemberService {
 
     async createOwnerMember(restaurantId: number, userId: number, trx?: Knex): Promise<void> {
         const roleId = await findRoleByName('owner', trx as Knex.Transaction | undefined);
-        if (!roleId) throw RoleNotFoundError;
+        if (!roleId) throw RoleNotFoundError();
 
         const now = new Date();
         await createRestaurantMember({
@@ -66,11 +66,11 @@ export class MemberService {
         const branchIds = data.branchIds ?? [];
 
         if (data.role === 'owner') {
-            throw CannotCreateOwnerUserError;
+            throw CannotCreateOwnerUserError();
         }
 
         const roleId = await findRoleByName(data.role);
-        if (!roleId) throw RoleNotFoundError;
+        if (!roleId) throw RoleNotFoundError();
 
         // Validate branch ownership before the transaction
         await this.validateBranchOwnership(branchIds, restaurantId);
@@ -142,16 +142,16 @@ export class MemberService {
 
     async updateMember(restaurantId: number, memberId: number, data: UpdateMemberDTO) {
         const result = await findMemberWithRoleName(memberId);
-        if (!result) throw MemberNotFoundError;
+        if (!result) throw MemberNotFoundError();
 
         if (Number(result.member.restaurantId) !== Number(restaurantId)) {
-            throw MemberNotFoundError;
+            throw MemberNotFoundError();
         }
 
         let roleId: number | undefined;
         if (data.role) {
             const foundRoleId = await findRoleByName(data.role);
-            if (!foundRoleId) throw RoleNotFoundError;
+            if (!foundRoleId) throw RoleNotFoundError();
             roleId = foundRoleId;
         }
 
@@ -160,14 +160,14 @@ export class MemberService {
 
     async deleteMember(restaurantId: number, memberId: number) {
         const result = await findMemberWithRoleName(memberId);
-        if (!result) throw MemberNotFoundError;
+        if (!result) throw MemberNotFoundError();
 
         if (Number(result.member.restaurantId) !== Number(restaurantId)) {
-            throw MemberNotFoundError;
+            throw MemberNotFoundError();
         }
 
         if (result.roleName === 'owner') {
-            throw CannotDeleteOwnerError;
+            throw CannotDeleteOwnerError();
         }
 
         await deleteMemberRepo(memberId);
@@ -175,10 +175,10 @@ export class MemberService {
 
     async updateMemberBranches(restaurantId: number, memberId: number, data: UpdateMemberBranchesDTO) {
         const result = await findMemberWithRoleName(memberId);
-        if (!result) throw MemberNotFoundError;
+        if (!result) throw MemberNotFoundError();
 
         if (Number(result.member.restaurantId) !== Number(restaurantId)) {
-            throw MemberNotFoundError;
+            throw MemberNotFoundError();
         }
 
         if (result.roleName === 'owner') {

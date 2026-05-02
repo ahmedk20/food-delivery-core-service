@@ -74,7 +74,7 @@ export class BranchService {
         // Find branch
         const branch = await findBranchById(branchId);
         if (!branch) {
-            throw BranchNotFoundError;
+            throw BranchNotFoundError();
         }
 
         // Find restaurant to check ownership
@@ -91,7 +91,7 @@ export class BranchService {
         // Update branch
         const updated = await updateBranch(branchId, data);
         if (!updated) {
-            throw BranchNotFoundError;
+            throw BranchNotFoundError();
         }
 
         return updated;
@@ -110,13 +110,13 @@ export class BranchService {
         // Find branch (404 check)
         const branch = await findBranchById(branchId);
         if (!branch) {
-            throw BranchNotFoundError;
+            throw BranchNotFoundError();
         }
 
         // Update status
         const updated = await updateBranchStatus(branchId, data);
         if (!updated) {
-            throw BranchNotFoundError;
+            throw BranchNotFoundError();
         }
 
         return {

@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/cross-env APP_STAGE=dev node_modules/.bin/tsx -e ' *)",
+      "Bash(node_modules/.bin/cross-env APP_STAGE=dev node_modules/.bin/tsx -e \"const { db } = await import\\('./src/lib/knex/knex.ts'\\); const r = await db.raw\\(\\\\\"SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name\\\\\"\\); console.log\\(r.rows.map\\(x => x.table_name\\).join\\('\\\\n'\\)\\); await db.destroy\\(\\);\")",
+      "Bash(node_modules/.bin/cross-env APP_STAGE=dev node_modules/.bin/tsx scripts/verify-tables.ts)"
     ]
   }
 }
