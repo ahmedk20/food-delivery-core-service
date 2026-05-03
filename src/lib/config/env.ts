@@ -46,6 +46,8 @@ const envSchema = z.object({
 
     CORS_ORIGINS: z.string().default("*"),
 
+    INTERNAL_HMAC_SECRET: z.string().min(1),
+
     EMAIL_HOST:     z.string().default('smtp.mailtrap.io'),
     EMAIL_PORT:     z.coerce.number().positive().default(587),
     EMAIL_USER:     z.string().default(''),
@@ -100,6 +102,8 @@ export const env = {
     cors: {
         origins: data.CORS_ORIGINS.split(',').map(origin => origin.trim()),
     },
+
+    internalHmacSecret: data.INTERNAL_HMAC_SECRET,
 
     email: {
         host:     data.EMAIL_HOST,

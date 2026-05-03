@@ -7,9 +7,11 @@ import { restaurantRouter } from "./app/restaurant/routes";
 import { branchRouter } from "./app/branch/routes";
 import { productRouter } from "./app/product/routes";
 import { rbacRouter } from "./app/member/routes";
+import { internalRouter } from "./app/internal/routes.js";
 
 export const routes = Router();
 routes.use("/health", healthRouter);
+routes.use("/internal", internalRouter);
 
 routes.use("/auth", authRouter);
 routes.use("/user", userRouter);
