@@ -36,8 +36,8 @@ synchronously for data it needs (product price/stock, address details, user look
 | Logging | winston (singleton `logger`) | Same pattern |
 | Correlation | X-CorrelationId header | Same middleware |
 | Idempotency | `Idempotency-Key` header | Same middleware |
-| WebSocket | `ws` library on same HTTP server | New — not in core |
-| HTTP client | `axios` | New — for core service sync calls |
+| WebSocket | `socket.io` + `@socket.io/redis-adapter` on same HTTP server | New — not in core |
+| HTTP client | Native `fetch` (Node 18+) | New — for core service sync calls; no axios dependency |
 | Payment | Kashier v3 (hosted sessions + webhook) | New |
 | Async messaging | RabbitMQ via `amqplib` + Transactional Outbox | New — inter-service events |
 
@@ -106,8 +106,10 @@ src/
 │   │   ├── AppError.ts
 │   │   └── errorHandler.ts
 │   ├── http/
-│   │   ├── response.ts         # sendSuccess / sendPaginated
+│   │   ├── response.ts                     # sendSuccess / sendPaginated
 │   │   ├── idempotency.ts
+│   │   ├── core-service-client.interface.ts # ICoreServiceClient
+│   │   ├── core-service-client.ts          # CoreServiceClient — native fetch + AbortController
 │   │   └── pagination/
 │   │       ├── cursor-pagination.ts
 │   │       └── parse-query.ts
@@ -121,17 +123,14 @@ src/
 │   ├── validation/
 │   │   └── validate.ts
 │   └── websocket/
-│       ├── ws-server.ts        # WebSocket server setup
-│       ├── ws-auth.ts          # WebSocket JWT auth
-│       └── events.ts           # Event name constants
+│       ├── socket-server.ts    # socket.io server + @socket.io/redis-adapter setup
+│       ├── socket-auth.ts      # JWT auth middleware for socket.io handshake
+│       └── events.ts           # WS_EVENTS constants (dot-notation)
 │
 ├── pkg/                        # Pure provider implementations (NO app imports, NO lib imports)
 │   ├── cache/
 │   │   ├── cache.interface.ts
 │   │   └── redis.ts
-│   ├── http/
-│   │   ├── http-client.interface.ts
-│   │   └── axios.ts            # Axios HTTP client for core service calls
 │   ├── payment/
 │   │   ├── payment-provider.interface.ts
 │   │   └── kashier.ts          # Kashier v3 implementation
@@ -196,6 +195,15 @@ repositories directly.
 All monetary values are stored as **integers in the smallest currency unit** (piastres for EGP,
 halalas for SAR). Never store floats for money. Divide by 100 at the API response layer only.
 
+### Currency
+- Currency is resolved once at order placement: `currencyForCountry(countryCode)` in
+  `pkg/utils/currency.ts` (`EG → 'EGP'`, `SA → 'SAR'`).
+- The result is written to `orders.currency` and **copied verbatim** to every downstream money
+  row (`transactions`, `restaurant_balances`, `agent_earnings`). Downstream code must never
+  re-derive currency from `country_code` — the order owns its currency for life.
+- Money columns on those tables are `CHAR(3) NOT NULL` with **no default** — every insert
+  passes currency explicitly.
+
 ### Timestamps
 - Use `TIMESTAMP` (not `TIMESTAMPTZ`) consistently — store UTC.
 - Every mutable table has `created_at TIMESTAMP NOT NULL` and `updated_at TIMESTAMP NOT NULL`.
@@ -206,7 +214,9 @@ halalas for SAR). Never store floats for money. Divide by 100 at the API respons
 - **Shard key**: `country_code CHAR(2) NOT NULL` — present in every distributed table.
 - Distributed tables: `orders`, `order_items`, `transactions`, `restaurant_balances`,
   `agent_presence`, `agent_earnings`.
-- Reference tables (not sharded): `payment_providers`.
+- Reference tables (replicated to every shard): `payment_providers` — declared with
+  `SELECT create_reference_table('payment_providers');` in its migration so distributed
+  tables can FK to it.
 - **Composite PKs**: all distributed tables use `PRIMARY KEY (id, country_code)`.
 - **Foreign keys across distributed tables** must include `country_code` in both sides.
 - Queries must always filter on `country_code` to avoid cross-shard scatter queries.
@@ -391,11 +401,16 @@ interface JWTPayload {
 ```
 
 ### Route-Level Guards
-- Customer routes: `authenticate` middleware, check `req.user.role === 'customer'`
-- Delivery agent routes: `authenticate`, check `role === 'delivery_agent'`
-- Restaurant routes: `authenticate`, `requireRestaurantMember()`, `rbac({ resource, action })`
+- Customer routes: `authenticate`, `requireRole('customer')`
+- Delivery agent routes: `authenticate`, `requireRole('delivery_agent')`
+- Restaurant routes: `authenticate`, `requireRestaurantMember()` (asserts JWT `restaurantId` matches the resource's restaurant; owner sees all branches, branch_manager only `branchIds`)
 - Admin routes: `authenticate`, `requireSystemAdmin()`
-- Webhook endpoints: **no auth middleware** — verified by HMAC signature inside the handler
+- Internal cross-service routes (`/api/internal/*`): `requireInternalHmac()` — see Phase 2.3
+- Webhook endpoints (`/api/payments/webhook`): **no auth middleware** — verified by Kashier's `signatureKeys` HMAC inside the handler
+
+> Note: this service has no `restaurant_members` table and no permission catalog. RBAC is
+> JWT-only — there is no `rbac({ resource, action })` middleware (that's a core-service
+> pattern). Permissions are coarse: role + restaurantId + branchIds, all carried in the JWT.
 
 ---
 
@@ -410,7 +425,7 @@ All keys follow: `{service}:{entity}:{identifier}:{variant}` pattern.
 | `os:orders:branch:{branchId}:{status}:{cursor}` | 30s | Restaurant branch order list |
 | `os:agent:presence:{agentId}` | 30s | Agent location (short TTL — live data) |
 | `os:payment:session:{orderId}` | 1800s | Active Kashier session URL |
-| `idempotent:{key}` | 86400s | Idempotency replay cache |
+| `os:idempotency:{userId}:{method}:{path}:{key}` | 86400s | Idempotency replay cache (user-scoped) |
 
 Prefix `os:` (order service) to avoid collisions with core service keys in a shared Redis.
 
@@ -418,32 +433,40 @@ Prefix `os:` (order service) to avoid collisions with core service keys in a sha
 
 ## 9. WebSocket Events
 
-The WebSocket server runs on the same HTTP server, mounted at `/ws`.
+`socket.io` server mounted at `/ws` on the same HTTP server. Multi-instance fan-out via
+`@socket.io/redis-adapter` (no sticky load balancer required).
 
 ### Authentication
-WebSocket connection sends `access_token` cookie — the upgrade handler verifies it the same way
-as the HTTP guard.
+JWT supplied at handshake via `socket.handshake.auth.token` (preferred) or the `access_token`
+cookie as a same-origin fallback. Verified with `jose` against `ACCESS_SECRET`. Failed handshake
+→ connection rejected with `unauthorized`.
 
 ### Rooms
-- `order:{orderId}` — customer and restaurant tracking an order
-- `restaurant:branch:{branchId}` — restaurant dashboard receiving new orders
-- `agent:{agentId}` — agent receiving assignments
+- `customer:{userId}` — customer's own channel
+- `order:{orderId}` — anyone authorized for that specific order (customer, restaurant member, assigned agent)
+- `branch:{branchId}` — restaurant dashboard for a branch
+- `agent:{agentId}` — agent's own channel
 
 ### Server → Client Events
 | Event | Payload | Room |
 |---|---|---|
-| `order:status_changed` | `{ orderId, status, updatedAt }` | `order:{orderId}` |
-| `order:new` | `{ orderId, customerId, itemsTotal, createdAt }` | `restaurant:branch:{branchId}` |
-| `order:agent_assigned` | `{ orderId, agentId }` | `order:{orderId}` |
-| `agent:location_updated` | `{ agentId, lat, lng }` | `order:{orderId}` |
-| `payment:completed` | `{ orderId, transactionId }` | `order:{orderId}` |
+| `order.status_changed` | `{ orderId, status, updatedAt }` | `order:{orderId}` |
+| `order.created` | `{ orderId, customerId, itemsTotal, createdAt }` | `branch:{branchId}` |
+| `order.delivery_assigned` | `{ orderId, agentId }` | `order:{orderId}` |
+| `order.cancelled` | `{ orderId, reason }` | `order:{orderId}` |
+| `agent.location_updated` | `{ agentId, lat, lng }` | `order:{orderId}` |
+| `payment.completed` | `{ orderId, transactionId }` | `order:{orderId}` |
+| `payment.failed` | `{ orderId, reason }` | `order:{orderId}` |
 
 ### Client → Server Events
 | Event | Payload | Handler |
 |---|---|---|
-| `join:order` | `{ orderId }` | Subscribe customer/restaurant to order room |
-| `join:restaurant` | `{ branchId }` | Subscribe restaurant dashboard to branch room |
-| `agent:location` | `{ lat, lng }` | Update agent presence (delivery_agent role only) |
+| `subscribe` | `(channel, ack)` | Validate channel ∈ allowedChannels (or run on-demand ownership check for `order:<id>`), join room, ack `{ ok: true }` |
+| `unsubscribe` | `(channel)` | Leave room |
+| `agent:location` | `{ lat, lng }` | `delivery_agent` role only — calls `agentService.updatePresence` |
+
+On connection the server emits `hello { allowedChannels }` so the client knows what it can
+subscribe to without round-tripping.
 
 ---
 
@@ -459,8 +482,9 @@ Called at order-placement time only. Never call during read-only paths (use cach
 | `GET /api/customer/addresses/:id` | Snapshot delivery address | Fail order with 422 |
 | `GET /api/user/:id` | Validate customer exists | Fail order with 422 |
 
-Use the `ICoreServiceClient` interface injected via DI. The concrete `AxiosCoreServiceClient`
-implementation lives in `pkg/http/`. **Never** import axios directly in `app/` or `lib/`.
+Use the `ICoreServiceClient` interface injected via DI. The concrete `CoreServiceClient`
+implementation lives in `lib/http/core-service-client.ts` and uses native `fetch` with an
+`AbortController` 5-second timeout. **No retry** — failures surface as 503 directly.
 
 ### Asynchronous (future)
 - Place order → increment `total_orders` on restaurant (analytics counter, fire-and-forget)
@@ -553,6 +577,7 @@ webhooks, independent of the HTTP middleware).
 APP_STAGE=dev|production|test
 PORT=3001
 HOST=localhost
+APP_BASE_URL=http://localhost:3001  # public base URL — used to build the Kashier serverWebhook URL
 
 DB_URL=postgresql://...             # order_service DB
 DB_POOL_MIN=2
@@ -566,8 +591,7 @@ ACCESS_SECRET=                      # Shared with core service (JWT verification
 CORE_SERVICE_URL=http://localhost:3000
 
 KASHIER_MERCHANT_ID=
-KASHIER_API_KEY=
-KASHIER_WEBHOOK_SECRET=
+KASHIER_API_KEY=                    # Used for both session creation auth AND webhook signature verification
 KASHIER_BASE_URL=https://checkout.kashier.io
 
 CORS_ORIGINS=http://localhost:3000

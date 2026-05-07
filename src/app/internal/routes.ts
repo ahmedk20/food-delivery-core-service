@@ -5,6 +5,7 @@ import { sendSuccess } from '../../lib/http/response.js';
 import { findProductByIdWithBranch } from '../product/repository/product.repository.js';
 import { findAddressById } from '../customer/repository/address.repo.js';
 import { findUserById } from '../user/repository/users.repo.js';
+import { getPermissionsDetailsByRoleName } from '../member/repository/permission.repo.js';
 import AppError from '../../lib/error/AppError.js';
 
 export const internalRouter = Router();
@@ -62,6 +63,19 @@ internalRouter.get(
                 phone: user.phone,
                 systemRole: user.systemRole,
             });
+        } catch (err) {
+            next(err);
+        }
+    },
+);
+
+internalRouter.get(
+    '/roles/:role/permissions',
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const role = req.params.role as string;
+            const permissions = await getPermissionsDetailsByRoleName(role);
+            sendSuccess(res, { role, permissions });
         } catch (err) {
             next(err);
         }
