@@ -27,7 +27,7 @@ synchronously for data it needs (product price/stock, address details, user look
 | Framework | Express 5 | Same |
 | Language | TypeScript 5 (strict) | Same |
 | DB query builder | Knex 3 + `pg` | Same; DB name: `order_service` |
-| DB sharding | Citus (PostgreSQL extension) | Shard key: `country_code` |
+| DB sharding | Per-region Postgres clusters | One cluster per country; routing key: `region TEXT` |
 | Cache | ioredis 5 via `ICacheProvider` | Same interface |
 | Auth / JWT | jose 6 (verify only — tokens issued by core) | No token issuance here |
 | DI | TSyringe | Same container pattern |
@@ -114,12 +114,15 @@ src/
 │   │       ├── cursor-pagination.ts
 │   │       └── parse-query.ts
 │   ├── knex/
-│   │   ├── knex.ts
-│   │   └── knexfile.ts
+│   │   ├── knex.ts             # db(region) + dbArchive(region) + pingAll
+│   │   ├── shards.ts           # Lazy Knex connection cache per cluster (Map<string,Knex>)
+│   │   └── knexfile.ts         # Requires REGION + CLUSTER env vars; throws if missing
+│   ├── sharding/
+│   │   └── region-resolver.ts  # resolveRegion, requireRegion, requireConcreteRegion
 │   ├── logger/
 │   │   └── logger.ts
 │   ├── types/
-│   │   └── express.d.ts        # req.user augmentation
+│   │   └── express.d.ts        # req.user + req.region augmentation
 │   ├── validation/
 │   │   └── validate.ts
 │   └── websocket/
@@ -210,17 +213,16 @@ halalas for SAR). Never store floats for money. Divide by 100 at the API respons
 - Soft-deletes: add `deleted_at TIMESTAMP` where applicable (orders never hard-delete).
 - `updated_at` is managed by a DB trigger (same pattern as core service).
 
-### Sharding (Citus)
-- **Shard key**: `country_code CHAR(2) NOT NULL` — present in every distributed table.
-- Distributed tables: `orders`, `order_items`, `transactions`, `restaurant_balances`,
-  `agent_presence`, `agent_earnings`.
-- Reference tables (replicated to every shard): `payment_providers` — declared with
-  `SELECT create_reference_table('payment_providers');` in its migration so distributed
-  tables can FK to it.
-- **Composite PKs**: all distributed tables use `PRIMARY KEY (id, country_code)`.
-- **Foreign keys across distributed tables** must include `country_code` in both sides.
-- Queries must always filter on `country_code` to avoid cross-shard scatter queries.
-- Never join across distributed tables without a colocated key.
+### Sharding (per-region clusters)
+- **Architecture**: one independent Postgres cluster per country (`eg`, `ksa`, ...). No Citus coordinator. The DB column and code identifier is `region TEXT NOT NULL` so the router stays generic if a country is ever sub-sharded (e.g. `eg-cai`).
+- **Routing key**: `region TEXT NOT NULL` — present on every sharded table as the second column after `id`. All queries are region-isolated: every caller must pass a region to `db(region)`.
+- **Sharded tables**: `orders`, `order_items`, `transactions`, `restaurant_balances`, `agent_presence`, `agent_earnings`.
+- **`payment_providers`** is a normal table replicated to every shard via migration (no Citus `create_reference_table` call).
+- **Simple PKs**: `BIGSERIAL PRIMARY KEY` — no composite PK. The Citus requirement for the distribution column in every PK is gone.
+- **Simple FKs**: no need to include `region` in FK column lists.
+- **`country_code`** stays as a business column on `orders` only — it drives `currencyForCountry()`. Do not confuse it with `region`; they hold the same value at insert time but serve different roles.
+- **Migrations run per-shard explicitly**: `REGION=eg CLUSTER=hot npm run migrate`. The knexfile throws if `REGION` is not set.
+- **`db(region)` is a function, not a singleton** — it calls `getHotShard(region)` from `lib/knex/shards.ts`. Pass `region` to every repository call; never import a bare `db` constant.
 
 ### Indexes — Query-Driven (no speculative indexes)
 
@@ -250,7 +252,8 @@ application layer is responsible for validating existence via core service HTTP 
 // src/app/order/entity/order.entity.ts
 export class OrderEntity {
   id: number;
-  countryCode: string;
+  region: string;
+  countryCode: string;   // business column: drives currency; same value as region at insert time
   customerId: number;
   // ... all properties camelCase
   createdAt: Date;
@@ -258,6 +261,7 @@ export class OrderEntity {
 
   constructor(data: Partial<OrderEntity>) {
     this.id = data.id!;
+    this.region = data.region!;
     this.countryCode = data.countryCode!;
     // nullable: data.deliveryAgentId ?? null
     // timestamps: data.createdAt ?? new Date()
@@ -268,27 +272,29 @@ export class OrderEntity {
 ### Repository Pattern
 ```typescript
 // src/app/order/repository/order.repo.ts
-const ORDER_COLUMNS = ['id', 'country_code', 'customer_id', ...];
+const ORDER_COLUMNS = ['id', 'region', 'country_code', 'customer_id', ...];
 
 function toEntity(row: any): OrderEntity {
   return new OrderEntity({
     id: row.id,
+    region: row.region,
     countryCode: row.country_code,
     // map every snake_case → camelCase
   });
 }
 
-export async function findOrderById(id: number, countryCode: string): Promise<OrderEntity | undefined> {
-  const row = await db('orders')
+export async function findOrderById(id: number, region: string): Promise<OrderEntity | undefined> {
+  const row = await db(region)('orders')
     .select(ORDER_COLUMNS)
-    .where({ id, country_code: countryCode })
+    .where({ id })
     .first();
   return row ? toEntity(row) : undefined;
 }
 
-// All writes accept optional conn: Knex = db for transaction support
-export async function createOrder(data: Partial<OrderEntity>, conn: Knex = db): Promise<OrderEntity> {
-  const [row] = await conn('orders').insert({ ... }).returning(ORDER_COLUMNS);
+// All writes accept optional conn for transaction support; region is always required
+export async function createOrder(data: Partial<OrderEntity>, region: string, conn?: Knex): Promise<OrderEntity> {
+  const knex = conn ?? db(region);
+  const [row] = await knex('orders').insert({ ... }).returning(ORDER_COLUMNS);
   return toEntity(row);
 }
 ```
@@ -302,8 +308,8 @@ export class OrderService {
     @inject(TOKENS.CoreServiceClient) private readonly coreClient: ICoreServiceClient,
   ) {}
 
-  placeOrder = async (customerId: number, countryCode: string, data: PlaceOrderDTO): Promise<PlaceOrderResponseDTO> => {
-    const trx = await db.transaction();
+  placeOrder = async (customerId: number, region: string, data: PlaceOrderDTO): Promise<PlaceOrderResponseDTO> => {
+    const trx = await db(region).transaction();
     try {
       // business logic
       await trx.commit();
@@ -325,7 +331,7 @@ export class OrderController {
   placeOrder = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = await validateBody(PlaceOrderDTO, req.body);
-      const result = await this.orderService.placeOrder(req.user!.userId, req.user!.countryCode, dto);
+      const result = await this.orderService.placeOrder(req.user!.userId, req.region!, dto);
       sendSuccess(res, result, 201);
     } catch (err) {
       next(err);
@@ -393,41 +399,54 @@ The `req.user` payload mirrors the core service JWT shape:
 interface JWTPayload {
   userId: number;
   role: SystemRole;      // customer | delivery_agent | restaurant_user | system_admin
-  countryCode: string;   // injected from JWT claims
+  countryCode: string;   // user's home country (profile field) — NOT used for DB routing
   restaurantId?: number;
   restaurantRole?: string;
   branchIds?: number[];
 }
 ```
 
-### Route-Level Guards
-- Customer routes: `authenticate`, `requireRole('customer')`
-- Delivery agent routes: `authenticate`, `requireRole('delivery_agent')`
-- Restaurant routes: `authenticate`, `requireRestaurantMember()` (asserts JWT `restaurantId` matches the resource's restaurant; owner sees all branches, branch_manager only `branchIds`)
-- Admin routes: `authenticate`, `requireSystemAdmin()`
-- Internal cross-service routes (`/api/internal/*`): `requireInternalHmac()` — see Phase 2.3
-- Webhook endpoints (`/api/payments/webhook`): **no auth middleware** — verified by Kashier's `signatureKeys` HMAC inside the handler
+### Middleware Stack (applied in order on every request)
+1. `correlationId` — sets X-CorrelationId
+2. `resolveRegion` — reads `X-Region` header → sets `req.region`; never throws
+3. `authenticate` — verifies JWT cookie; populates `req.user`
+4. Role / permission guards (see below)
 
-> Note: this service has no `restaurant_members` table and no permission catalog. RBAC is
-> JWT-only — there is no `rbac({ resource, action })` middleware (that's a core-service
-> pattern). Permissions are coarse: role + restaurantId + branchIds, all carried in the JWT.
+### Route-Level Guards
+- Customer routes: `requireRegion`, `requireRole('customer')`
+- Delivery agent routes: `requireRegion`, `requireRole('delivery_agent')`
+- Restaurant routes: `requireRegion`, `requireRestaurantMember()`, `rbac({ resource, action })`
+- Admin routes: `requireRole('system_admin')` (allows `X-Region: all` for fan-out reads; write endpoints additionally use `requireConcreteRegion`)
+- Internal cross-service routes (`/api/internal/*`): `requireInternalHmac()`
+- Webhook endpoints (`/api/payments/webhook`): **no auth middleware** — verified by Kashier's HMAC inside the handler
+
+`requireRegion` throws `RegionNotResolvedError` (400) if `req.region` is undefined. `requireConcreteRegion` additionally rejects the `"all"` value (for write endpoints).
+
+### RBAC
+The `rbac({ resource, action })` middleware resolves the calling role's permissions from a Redis-backed projection at `core:rbac:perms:{roleName}`, populated via `core-client.getPermissionsByRole()` (TTL 5 minutes). Invalidated when a `rbac.permissions_changed` event arrives over RabbitMQ. Ownership checks (e.g., this order belongs to this customer) live in the **service layer** because they require a DB lookup.
+
+See `docs/business-logic/rbac.md` for the permission seed and per-endpoint matrix.
 
 ---
 
 ## 8. Redis Key Conventions
 
-All keys follow: `{service}:{entity}:{identifier}:{variant}` pattern.
+All order-service keys follow: `{region}:os:{entity}:{identifier}` pattern.
 
 | Key | TTL | Purpose |
 |---|---|---|
-| `os:order:{id}:{countryCode}` | 300s | Single order detail cache |
-| `os:orders:customer:{customerId}:{cursor}:{filtersHash}` | 60s | Customer order list |
-| `os:orders:branch:{branchId}:{status}:{cursor}` | 30s | Restaurant branch order list |
-| `os:agent:presence:{agentId}` | 30s | Agent location (short TTL — live data) |
-| `os:payment:session:{orderId}` | 1800s | Active Kashier session URL |
-| `os:idempotency:{userId}:{method}:{path}:{key}` | 86400s | Idempotency replay cache (user-scoped) |
+| `{region}:os:order:{id}` | 300s | Single order detail cache |
+| `{region}:os:orders:customer:{customerId}:{cursor}:{filtersHash}` | 60s | Customer order list |
+| `{region}:os:orders:branch:{branchId}:{status}:{cursor}` | 30s | Restaurant branch order list |
+| `{region}:os:payment:session:{orderId}` | 1800s | Active Kashier session URL |
+| `{region}:os:idempotency:{userId}:{method}:{path}:{key}` | 86400s | Idempotency replay cache (user-scoped) |
+| `presence:geo:{region}` | no TTL | Agent geo sorted set — maintained by presence pings |
+| `presence:busy:{region}` | no TTL | Set of agent IDs with an active delivery |
+| `presence:meta:{region}:{agentId}` | 90s | Agent online flag + last_seen_at hash |
+| `core:branch:{branchId}` | 60s | Cached branch metadata (region derivation for POST /orders) |
+| `core:rbac:perms:{roleName}` | 300s | Permission list fetched from core service |
 
-Prefix `os:` (order service) to avoid collisions with core service keys in a shared Redis.
+The `{region}:os:` prefix scopes order-service keys per region and avoids collisions with core service keys in a shared Redis instance. Presence keys use a separate `presence:` namespace.
 
 ---
 
@@ -507,13 +526,13 @@ for (const order of orders) {
 
 // RIGHT
 const orderIds = orders.map(o => o.id);
-const allItems = await findItemsByOrderIds(orderIds, countryCode);
+const allItems = await findItemsByOrderIds(orderIds, region);
 const itemsMap = groupBy(allItems, 'orderId');
 orders.forEach(o => { o.items = itemsMap[o.id] ?? []; });
 ```
 
-### Always Filter by country_code
-Every distributed table query must include `country_code` to avoid cross-shard scatter.
+### Always pass region to db()
+Every sharded table query runs through `db(region)`. Never import `db` as a singleton. The region comes from `req.region` (set by `resolveRegion` middleware) and must be threaded through to every service and repository call.
 
 ### Snapshots Over Joins
 Order items store a snapshot of `product_name`, `unit_price`, `product_image_url` at order time.
@@ -524,8 +543,8 @@ All list endpoints use **cursor-based pagination** (id-based cursor, no OFFSET).
 size is 20. Maximum is 100.
 
 ### Cache Aggressively, Invalidate Precisely
-- On order status change: `del(os:order:{id}:{countryCode})`
-- On new order: `del(os:orders:branch:{branchId}:*)` (pattern delete or let TTL expire)
+- On order status change: `del({region}:os:order:{id})`
+- On new order: `del({region}:os:orders:branch:{branchId}:*)` (pattern delete or let TTL expire)
 
 ---
 
@@ -579,9 +598,32 @@ PORT=3001
 HOST=localhost
 APP_BASE_URL=http://localhost:3001  # public base URL — used to build the Kashier serverWebhook URL
 
-DB_URL=postgresql://...             # order_service DB
+REGIONS=eg,ksa                      # comma-separated list; must match DB_<r>_* keys below
+
+DB_eg_HOST=localhost
+DB_eg_PORT=5432
+DB_eg_USERNAME=postgres
+DB_eg_PASSWORD=
+DB_eg_NAME=order_service_eg
+ARCHIVE_DB_eg_HOST=localhost
+ARCHIVE_DB_eg_PORT=5432
+ARCHIVE_DB_eg_USERNAME=postgres
+ARCHIVE_DB_eg_PASSWORD=
+ARCHIVE_DB_eg_NAME=order_service_archive_eg
+
+DB_ksa_HOST=localhost
+DB_ksa_PORT=5432
+DB_ksa_USERNAME=postgres
+DB_ksa_PASSWORD=
+DB_ksa_NAME=order_service_ksa
+ARCHIVE_DB_ksa_HOST=localhost
+ARCHIVE_DB_ksa_PORT=5432
+ARCHIVE_DB_ksa_USERNAME=postgres
+ARCHIVE_DB_ksa_PASSWORD=
+ARCHIVE_DB_ksa_NAME=order_service_archive_ksa
+
 DB_POOL_MIN=2
-DB_POOL_MAX=10
+DB_POOL_MAX=10                      # per shard; total connections = REGIONS × 2 × DB_POOL_MAX per instance
 
 REDIS_HOST=localhost
 REDIS_PORT=6379
@@ -591,12 +633,13 @@ ACCESS_SECRET=                      # Shared with core service (JWT verification
 CORE_SERVICE_URL=http://localhost:3000
 
 KASHIER_MERCHANT_ID=
-KASHIER_API_KEY=                    # Used for both session creation auth AND webhook signature verification
+KASHIER_API_KEY=                    # Session creation auth header
+KASHIER_WEBHOOK_SECRET=             # HMAC key for webhook signature verification
 KASHIER_BASE_URL=https://checkout.kashier.io
+KASHIER_RETURN_URL=https://app.quickbite.example/checkout/return
+KASHIER_FAIL_URL=https://app.quickbite.example/checkout/failed
 
 CORS_ORIGINS=http://localhost:3000
-
-COUNTRY_CODE=EG                     # Default region for this deployment
 
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
 INTERNAL_HMAC_SECRET=               # Shared secret for internal service-to-service webhooks
@@ -613,7 +656,8 @@ INTERNAL_HMAC_SECRET=               # Shared secret for internal service-to-serv
 - Do NOT process Kashier webhooks without signature verification.
 - Do NOT return raw entity objects from controllers — always map to Response DTOs.
 - Do NOT add indexes speculatively — only add when a concrete query requires it.
-- Do NOT query distributed tables without `country_code` in the WHERE clause.
+- Do NOT call `db()` without a region argument — always `db(region)` or `db(region).transaction()`.
+- Do NOT hardcode region strings — always read from `req.region` or validated `env.regions`.
 - Do NOT use OFFSET pagination — use cursor-based pagination.
 - Do NOT import `app/` modules from `lib/` or `pkg/`.
 - Do NOT import one `app/` module's repository from another `app/` module.
