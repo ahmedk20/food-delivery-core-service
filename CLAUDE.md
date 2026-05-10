@@ -10,8 +10,8 @@ must be consistent with these rules. Do not deviate without an explicit user ins
 This is the **order-and-payment microservice** of the QuickBite food-delivery platform. It handles:
 - Order lifecycle (placement → delivery)
 - Payment processing (Kashier v3 online, cash-on-delivery)
-- Delivery agent assignment, presence, and earnings
-- Restaurant balance tracking (read/credit side only — no payouts in this service yet)
+- Delivery agent auto-assignment, presence, and earnings
+- Restaurant balance tracking and admin-initiated payouts
 
 It does **not** own user accounts, restaurants, branches, products, or authentication. Those live
 in the **core service** (`food-delivery-core-service`). This service calls the core service
@@ -66,7 +66,7 @@ src/
 │   │   ├── enums.ts
 │   │   ├── errors.ts
 │   │   └── routes.ts
-│   ├── delivery-agent/
+│   ├── delivery/               # Delivery assignment lifecycle (deliveries table)
 │   │   ├── controller/
 │   │   ├── dto/
 │   │   ├── entity/
@@ -74,7 +74,15 @@ src/
 │   │   ├── service/
 │   │   ├── errors.ts
 │   │   └── routes.ts
-│   ├── restaurant-orders/      # Restaurant dashboard order views
+│   ├── delivery-agent/         # Agent presence, tasks, and earnings (agent_presence table)
+│   │   ├── controller/
+│   │   ├── dto/
+│   │   ├── entity/
+│   │   ├── repository/
+│   │   ├── service/
+│   │   ├── errors.ts
+│   │   └── routes.ts
+│   ├── restaurant-orders/      # Restaurant dashboard: order views + finance (balance, payouts)
 │   │   ├── controller/
 │   │   ├── dto/
 │   │   ├── service/
@@ -164,8 +172,8 @@ repositories directly.
 ## 4. Naming Conventions
 
 ### Database (snake_case everywhere)
-- Table names: `orders`, `order_items`, `transactions`, `agent_presence`
-- Column names: `country_code`, `created_at`, `items_total`, `dst_acc_id`
+- Table names: `orders`, `order_items`, `transactions`, `payment_sessions`, `deliveries`, `idempotency_keys`, `agent_presence`, `agent_earnings`, `restaurant_balances`
+- Column names: `country_code`, `created_at`, `subtotal`, `dst_acc_id`, `public_id`
 - Constraint names:
   - FK: `fk_{table}_{column}` e.g. `fk_order_items_order`
   - UQ: `uq_{table}_{column}` e.g. `uq_restaurant_balances_restaurant`
@@ -216,10 +224,11 @@ halalas for SAR). Never store floats for money. Divide by 100 at the API respons
 ### Sharding (per-region clusters)
 - **Architecture**: one independent Postgres cluster per country (`eg`, `ksa`, ...). No Citus coordinator. The DB column and code identifier is `region TEXT NOT NULL` so the router stays generic if a country is ever sub-sharded (e.g. `eg-cai`).
 - **Routing key**: `region TEXT NOT NULL` — present on every sharded table as the second column after `id`. All queries are region-isolated: every caller must pass a region to `db(region)`.
-- **Sharded tables**: `orders`, `order_items`, `transactions`, `restaurant_balances`, `agent_presence`, `agent_earnings`.
+- **Sharded tables**: `orders`, `order_items`, `transactions`, `payment_sessions`, `deliveries`, `idempotency_keys`, `restaurant_balances`, `agent_presence`, `agent_earnings`.
 - **`payment_providers`** is a normal table replicated to every shard via migration (no Citus `create_reference_table` call).
-- **Simple PKs**: `BIGSERIAL PRIMARY KEY` — no composite PK. The Citus requirement for the distribution column in every PK is gone.
+- **PKs**: `BIGSERIAL PRIMARY KEY` for most tables. `restaurant_balances` uses a composite PK `(restaurant_id, currency)` — no surrogate key.
 - **Simple FKs**: no need to include `region` in FK column lists.
+- **`agent_presence` generated column**: `location GEOGRAPHY GENERATED ALWAYS AS (ST_MakePoint(last_lng::float, last_lat::float)::geography) STORED` — lat/lng and the geography column can never drift.
 - **`country_code`** stays as a business column on `orders` only — it drives `currencyForCountry()`. Do not confuse it with `region`; they hold the same value at insert time but serve different roles.
 - **Migrations run per-shard explicitly**: `REGION=eg CLUSTER=hot npm run migrate`. The knexfile throws if `REGION` is not set.
 - **`db(region)` is a function, not a singleton** — it calls `getHotShard(region)` from `lib/knex/shards.ts`. Pass `region` to every repository call; never import a bare `db` constant.
@@ -252,15 +261,23 @@ application layer is responsible for validating existence via core service HTTP 
 // src/app/order/entity/order.entity.ts
 export class OrderEntity {
   id: number;
+  publicId: string;      // UUID — the only ID ever returned to clients
   region: string;
   countryCode: string;   // business column: drives currency; same value as region at insert time
   customerId: number;
+  subtotal: number;      // sum of (unit_price × quantity) for all items, in minor units
+  deliveryFee: number;
+  serviceFee: number;
+  commission: number;
+  discount: number;
+  total: number;
   // ... all properties camelCase
   createdAt: Date;
   updatedAt: Date;
 
   constructor(data: Partial<OrderEntity>) {
     this.id = data.id!;
+    this.publicId = data.publicId!;
     this.region = data.region!;
     this.countryCode = data.countryCode!;
     // nullable: data.deliveryAgentId ?? null
@@ -347,15 +364,16 @@ through a typed Response DTO**. This prevents accidental leakage of internal fie
 ```typescript
 // src/app/order/dto/order-response.dto.ts
 export class OrderResponseDTO {
-  id: number;
+  id: string;            // public_id (UUID) — NEVER expose the internal bigint id
   status: OrderStatus;
-  totalAmount: number;   // in piastres
+  subtotal: number;      // in minor units (piastres / halalas)
+  total: number;
   currency: string;
   // ...
 
   static fromEntity(entity: OrderEntity, items?: OrderItemEntity[]): OrderResponseDTO {
     const dto = new OrderResponseDTO();
-    dto.id = entity.id;
+    dto.id = entity.publicId;   // expose publicId, not entity.id
     // map fields
     return dto;
   }
@@ -413,14 +431,16 @@ interface JWTPayload {
 4. Role / permission guards (see below)
 
 ### Route-Level Guards
-- Customer routes: `requireRegion`, `requireRole('customer')`
-- Delivery agent routes: `requireRegion`, `requireRole('delivery_agent')`
-- Restaurant routes: `requireRegion`, `requireRestaurantMember()`, `rbac({ resource, action })`
-- Admin routes: `requireRole('system_admin')` (allows `X-Region: all` for fan-out reads; write endpoints additionally use `requireConcreteRegion`)
-- Internal cross-service routes (`/api/internal/*`): `requireInternalHmac()`
-- Webhook endpoints (`/api/payments/webhook`): **no auth middleware** — verified by Kashier's HMAC inside the handler
+- Customer routes: `authenticate`, `requireRole('customer')`, `requireRegion`
+- Delivery agent routes: `authenticate`, `requireRole('delivery_agent')`, `requireRegion`
+- Delivery assign/reassign (admin-initiated): `authenticate`, `requireSystemAdmin()`, `requireConcreteRegion`
+- Restaurant order/finance routes: `authenticate`, `requireRestaurantMember()`, `requireRegion`, `rbac({ resource, action })`
+- Restaurant payout (admin): `authenticate`, `requireSystemAdmin()`, `requireConcreteRegion`
+- Admin read routes (`/api/admin/*`): `authenticate`, `requireSystemAdmin()` (allows `X-Region: all` for fan-out reads)
+- Internal cross-service routes (`/api/internal/*`): `requireInternalHmac()` (no JWT auth)
+- Webhook endpoints (`/api/payments/webhook/{provider}`): **no auth middleware** — verified by Kashier HMAC inside the handler
 
-`requireRegion` throws `RegionNotResolvedError` (400) if `req.region` is undefined. `requireConcreteRegion` additionally rejects the `"all"` value (for write endpoints).
+`requireRegion` throws `RegionNotResolvedError` (400) if `req.region` is undefined. `requireConcreteRegion` additionally rejects the `"all"` value (used on all write endpoints that touch a single shard).
 
 ### RBAC
 The `rbac({ resource, action })` middleware resolves the calling role's permissions from a Redis-backed projection at `core:rbac:perms:{roleName}`, populated via `core-client.getPermissionsByRole()` (TTL 5 minutes). Invalidated when a `rbac.permissions_changed` event arrives over RabbitMQ. Ownership checks (e.g., this order belongs to this customer) live in the **service layer** because they require a DB lookup.
@@ -435,16 +455,19 @@ All order-service keys follow: `{region}:os:{entity}:{identifier}` pattern.
 
 | Key | TTL | Purpose |
 |---|---|---|
-| `{region}:os:order:{id}` | 300s | Single order detail cache |
+| `{region}:os:order:{publicId}` | 300s | Single order detail cache (keyed by UUID) |
 | `{region}:os:orders:customer:{customerId}:{cursor}:{filtersHash}` | 60s | Customer order list |
 | `{region}:os:orders:branch:{branchId}:{status}:{cursor}` | 30s | Restaurant branch order list |
-| `{region}:os:payment:session:{orderId}` | 1800s | Active Kashier session URL |
-| `{region}:os:idempotency:{userId}:{method}:{path}:{key}` | 86400s | Idempotency replay cache (user-scoped) |
+| `{region}:os:balance:{restaurantId}:{currency}` | 5s | Restaurant balance cache (short TTL — high stakes) |
+| `{region}:os:idempotency:{userId}:{method}:{path}:{key}` | 86400s | Idempotency replay cache (user-scoped); DB `idempotency_keys` is the fallback |
 | `presence:geo:{region}` | no TTL | Agent geo sorted set — maintained by presence pings |
 | `presence:busy:{region}` | no TTL | Set of agent IDs with an active delivery |
 | `presence:meta:{region}:{agentId}` | 90s | Agent online flag + last_seen_at hash |
 | `core:branch:{branchId}` | 60s | Cached branch metadata (region derivation for POST /orders) |
 | `core:rbac:perms:{roleName}` | 300s | Permission list fetched from core service |
+| `core-events:dedupe:{eventId}` | 86400s | RabbitMQ event dedup — prevents double-processing on redelivery |
+
+> Payment sessions are no longer cached in Redis — they are persisted to the `payment_sessions` DB table. Redis held only the session URL; the table holds the full lifecycle and idempotency context.
 
 The `{region}:os:` prefix scopes order-service keys per region and avoids collisions with core service keys in a shared Redis instance. Presence keys use a separate `presence:` namespace.
 
@@ -462,20 +485,20 @@ cookie as a same-origin fallback. Verified with `jose` against `ACCESS_SECRET`. 
 
 ### Rooms
 - `customer:{userId}` — customer's own channel
-- `order:{orderId}` — anyone authorized for that specific order (customer, restaurant member, assigned agent)
+- `order:{publicId}` — anyone authorized for that specific order (customer, restaurant member, assigned agent); keyed by UUID not bigint
 - `branch:{branchId}` — restaurant dashboard for a branch
 - `agent:{agentId}` — agent's own channel
 
 ### Server → Client Events
 | Event | Payload | Room |
 |---|---|---|
-| `order.status_changed` | `{ orderId, status, updatedAt }` | `order:{orderId}` |
-| `order.created` | `{ orderId, customerId, itemsTotal, createdAt }` | `branch:{branchId}` |
-| `order.delivery_assigned` | `{ orderId, agentId }` | `order:{orderId}` |
-| `order.cancelled` | `{ orderId, reason }` | `order:{orderId}` |
-| `agent.location_updated` | `{ agentId, lat, lng }` | `order:{orderId}` |
-| `payment.completed` | `{ orderId, transactionId }` | `order:{orderId}` |
-| `payment.failed` | `{ orderId, reason }` | `order:{orderId}` |
+| `order.status_changed` | `{ orderId, status, updatedAt }` | `order:{publicId}` |
+| `order.created` | `{ orderId, customerId, subtotal, createdAt }` | `branch:{branchId}` |
+| `order.delivery_assigned` | `{ orderId, agentId }` | `order:{publicId}` |
+| `order.cancelled` | `{ orderId, reason }` | `order:{publicId}` |
+| `agent.location_updated` | `{ agentId, lat, lng }` | `order:{publicId}` |
+| `payment.succeeded` | `{ orderId, transactionId }` | `order:{publicId}` |
+| `payment.failed` | `{ orderId, reason }` | `order:{publicId}` |
 
 ### Client → Server Events
 | Event | Payload | Handler |
@@ -503,7 +526,13 @@ Called at order-placement time only. Never call during read-only paths (use cach
 
 Use the `ICoreServiceClient` interface injected via DI. The concrete `CoreServiceClient`
 implementation lives in `lib/http/core-service-client.ts` and uses native `fetch` with an
-`AbortController` 5-second timeout. **No retry** — failures surface as 503 directly.
+`AbortController` 5-second timeout per attempt. **Retry policy**: 3 attempts with exponential
+backoff (100ms → 200ms → 400ms, capped at 500ms total wait); retries only on network errors or
+5xx responses. Non-retryable failures (4xx, stock conflicts) surface immediately.
+
+After the order DB transaction commits, call `coreClient.reserveStock(items)` out-of-transaction
+to decrement product stock. If this call fails, void the order (cancel + refund) — do not leave
+an order with unreserved stock.
 
 ### Asynchronous (future)
 - Place order → increment `total_orders` on restaurant (analytics counter, fire-and-forget)
@@ -553,11 +582,12 @@ size is 20. Maximum is 100.
 See `docs/business-logic/payments.md` for full flow documentation.
 
 Key rules:
-- Payment sessions are created server-side (never expose merchant API key to client).
-- Webhook endpoint is unauthenticated but **must verify the HMAC signature** before trusting the payload.
-- Use `idempotency_key` on the `transactions` table to prevent double-processing webhooks.
-- Transactions are immutable once `status = 'completed'` or `status = 'failed'`.
-- On payment failure: order status → `failed`, no retry by this service (customer re-initiates).
+- Payment sessions are created server-side (never expose `KASHIER_API_KEY` to clients).
+- Every Kashier session is persisted to the `payment_sessions` table at creation time. Webhook handlers look up the session by `provider_session_id` — not by order ID alone.
+- Webhook endpoint is unauthenticated but **must verify the HMAC-SHA256 signature using `KASHIER_WEBHOOK_SECRET`** (not the API key) before trusting the payload.
+- Use `UNIQUE (idempotency_key)` on the `transactions` table to prevent double-processing webhooks.
+- Transactions are immutable once `status = 'succeeded'` or `status = 'failed'`.
+- On payment failure (`payment.failed` webhook): order status stays `pending_payment` — it is NOT terminal. The customer may retry. A background sweep cancels `pending_payment` orders older than `PAYMENT_SESSION_TIMEOUT_MIN` (default 15 min).
 
 ---
 
@@ -582,11 +612,15 @@ Same pattern as core service:
 
 Use the `idempotency()` middleware on:
 - `POST /api/orders` (place order)
-- `POST /api/payments/sessions` (create session)
-- `POST /api/orders/:id/cancel`
+- `POST /api/payments/init` (create Kashier session)
+- `POST /api/orders/:publicId/cancel`
+- `POST /api/restaurant/payouts` (admin payout)
 
-The `transactions` table has its own `idempotency_key` column (database-level dedup for
-webhooks, independent of the HTTP middleware).
+**Two-layer idempotency**:
+1. **Redis** (`{region}:os:idempotency:{userId}:{method}:{path}:{key}`, TTL 24h) — fast path.
+2. **`idempotency_keys` DB table** — fallback when Redis is unavailable. The table stores a `key_hash` (SHA-256 of the full key), `request_fingerprint` (hash of the request body), `response_body JSONB`, and `expires_at`. On Redis miss, the middleware falls back to a DB lookup before processing the request.
+
+The `transactions` table additionally has a `UNIQUE (idempotency_key)` constraint for database-level dedup of Kashier webhook replays, independent of the HTTP middleware.
 
 ---
 
@@ -643,6 +677,16 @@ CORS_ORIGINS=http://localhost:3000
 
 RABBITMQ_URL=amqp://guest:guest@localhost:5672
 INTERNAL_HMAC_SECRET=               # Shared secret for internal service-to-service webhooks
+
+# Delivery auto-assignment tuning
+ASSIGNMENT_RADIUS_METERS=5000       # GEOSEARCH radius for candidate agents
+AGENT_ACCEPT_TIMEOUT_SEC=30         # Seconds before trying next candidate
+MAX_REASSIGNMENT_ATTEMPTS=3         # After this many failures → broadcast mode
+AGENT_SHARE_RATE=1.0                # Fraction of delivery_fee kept by agent (1.0 in v1)
+
+# Background jobs
+PAYMENT_SESSION_TIMEOUT_MIN=15      # Minutes before pending_payment orders are auto-cancelled
+PRESENCE_STALE_SEC=90               # Seconds before an agent is removed from the geo set
 ```
 
 ---
@@ -662,3 +706,7 @@ INTERNAL_HMAC_SECRET=               # Shared secret for internal service-to-serv
 - Do NOT import `app/` modules from `lib/` or `pkg/`.
 - Do NOT import one `app/` module's repository from another `app/` module.
 - Do NOT expose the Kashier API key to clients — session creation is server-side only.
+- Do NOT expose internal bigint `id` fields in API responses — always use `public_id` (UUID).
+- Do NOT use `KASHIER_API_KEY` for webhook signature verification — the webhook secret is `KASHIER_WEBHOOK_SECRET`; these are distinct credentials.
+- Do NOT treat a `payment.failed` webhook as a terminal order state — the order stays `pending_payment` so the customer can retry; only the background sweep cancels it after timeout.
+- Do NOT create a new `deliveries` row on reassignment mutations — insert a new row with `reassigned_from` pointing to the previous one; never mutate a delivered/cancelled delivery row.
