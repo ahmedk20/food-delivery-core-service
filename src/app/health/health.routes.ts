@@ -1,13 +1,13 @@
-import {Router} from "express";
-import {Request, Response} from "express";
-import {pingDB} from "../../lib/knex/knex.js";
+import { Router, Request, Response } from 'express';
+import { pingAll } from '../../lib/knex/knex.js';
 
 export const healthRouter = Router();
-healthRouter.get('/', async (req:Request, res:Response) => {
+
+healthRouter.get('/', async (_req: Request, res: Response) => {
     try {
-        await pingDB();
-        return res.status(200).json({"ok": true});
-    }catch(err){
-        res.status(500).json({message: "database error"});
+        await pingAll();
+        res.status(200).json({ ok: true });
+    } catch {
+        res.status(500).json({ ok: false, message: 'database error' });
     }
 });

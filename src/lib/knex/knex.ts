@@ -1,8 +1,17 @@
-import config from "./knexfile.js";
-import knex from "knex";
+import { type Knex } from 'knex';
+import { env } from '../config/env.js';
+import { getHotShard, getArchiveShard } from './shards.js';
 
-export const db = knex(config);
+export function db(region: string): Knex {
+    return getHotShard(region);
+}
 
-export async function pingDB() {
-    await db.raw("SELECT 1")
+export function dbArchive(region: string): Knex {
+    return getArchiveShard(region);
+}
+
+export async function pingAll(): Promise<void> {
+    await Promise.all(
+        env.regions.map(region => getHotShard(region).raw('SELECT 1'))
+    );
 }

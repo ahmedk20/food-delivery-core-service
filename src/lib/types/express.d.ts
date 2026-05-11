@@ -1,14 +1,14 @@
 declare namespace Express {
     interface Request {
         correlationId?: string;
-        user?:{
+        region?: string;
+        user?: {
             userId: number;
-            email: string;
-            role: string;
+            role: import('../auth/roles.js').SystemRole;
+            countryCode: string;
             restaurantId?: number;
             restaurantRole?: string;
             branchIds?: number[];
-            [key: string]: unknown;
-        }
+        };
     }
 }

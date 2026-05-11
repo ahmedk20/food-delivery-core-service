@@ -1,4 +1,4 @@
-import AppError from '../error/AppError'
+import AppError from '../error/AppError.js';
 
-export const NotAuthenticated = new AppError('User not authenticated', 403);
-export const UnAuthorisedError = new AppError('User not authorised', 403);
+export const NotAuthenticated = new AppError('Not authenticated', 401);
+export const NotAuthorized    = new AppError('Not authorized', 403);
