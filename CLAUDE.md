@@ -40,6 +40,7 @@ synchronously for data it needs (product price/stock, address details, user look
 | HTTP client | Native `fetch` (Node 18+) | New — for core service sync calls; no axios dependency |
 | Payment | Kashier v3 (hosted sessions + webhook) | New |
 | Async messaging | RabbitMQ via `amqplib` + Transactional Outbox | New — inter-service events |
+| Partitioning | pg_partman (installed via custom Docker image) | New — manages monthly range partitions on high-volume tables |
 
 ---
 
@@ -226,8 +227,9 @@ halalas for SAR). Never store floats for money. Divide by 100 at the API respons
 - **Routing key**: `region TEXT NOT NULL` — present on every sharded table as the second column after `id`. All queries are region-isolated: every caller must pass a region to `db(region)`.
 - **Sharded tables**: `orders`, `order_items`, `transactions`, `payment_sessions`, `deliveries`, `idempotency_keys`, `restaurant_balances`, `agent_presence`, `agent_earnings`.
 - **`payment_providers`** is a normal table replicated to every shard via migration (no Citus `create_reference_table` call).
-- **PKs**: `BIGSERIAL PRIMARY KEY` for most tables. `restaurant_balances` uses a composite PK `(restaurant_id, currency)` — no surrogate key.
+- **PKs**: `BIGSERIAL PRIMARY KEY` for non-partitioned tables. Partitioned tables (`orders`, `transactions`, `deliveries`, `payment_webhook_events`) use a composite PK `(id, <partition_key>)` because PostgreSQL requires the partition key in every unique constraint. `restaurant_balances` uses a composite PK `(restaurant_id, currency)` — no surrogate key.
 - **Simple FKs**: no need to include `region` in FK column lists.
+- **FKs to partitioned tables are logical only**: DB-level foreign keys cannot reference a partitioned table unless the FK includes all partition key columns. Rather than denormalizing `created_at` onto every child table, we drop the DB-level constraint and enforce referential integrity in the service layer (same pattern as cross-service FKs). Affected: `order_items → orders`, `payment_sessions → orders`, `transactions → orders`, `deliveries → orders`, `agent_earnings → orders`, `agent_earnings → deliveries`.
 - **`agent_presence` generated column**: `location GEOGRAPHY GENERATED ALWAYS AS (ST_MakePoint(last_lng::float, last_lat::float)::geography) STORED` — lat/lng and the geography column can never drift.
 - **`country_code`** stays as a business column on `orders` only — it drives `currencyForCountry()`. Do not confuse it with `region`; they hold the same value at insert time but serve different roles.
 - **Migrations run per-shard explicitly**: `REGION=eg CLUSTER=hot npm run migrate`. The knexfile throws if `REGION` is not set.
@@ -240,12 +242,38 @@ corresponding query comment explaining why it exists. Index every FK column used
 
 Naming: `idx_{table}_{column(s)}` — multi-column indexes list all columns left-to-right.
 
+### Partitioning
+
+Four tables are range-partitioned monthly by pg_partman. See `docs/partitioning.md` for the
+full Docker setup, DDL, and migration approach.
+
+| Table | Partition key | Retention (hot cluster) |
+|---|---|---|
+| `orders` | `created_at` | 24 months |
+| `transactions` | `created_at` | 24 months |
+| `deliveries` | `assigned_at` | 24 months |
+| `payment_webhook_events` | `created_at` | 6 months |
+
+Key constraints that flow from this:
+- Every unique index on a partitioned table must include the partition key column.
+- `UNIQUE (public_id)` on `orders` becomes `UNIQUE (public_id, created_at)` — uniqueness is
+  guaranteed per-partition; global UUID uniqueness relies on collision probability.
+- `UNIQUE (idempotency_key)` on `transactions` becomes `UNIQUE (idempotency_key, created_at)`.
+- `UNIQUE (provider_id, provider_event_id)` on `payment_webhook_events` becomes
+  `UNIQUE (provider_id, provider_event_id, created_at)`. Cross-partition webhook dedup is
+  handled by the `core-events:dedupe:{eventId}` Redis key (TTL 24h).
+- The partial unique index on `deliveries` becomes `(order_id, assigned_at) WHERE status IN
+  ('assigned', 'accepted', 'picked')`. The application layer enforces the global (cross-partition)
+  single-active-delivery guarantee.
+
 ### Migrations
 - File format: `{YYYYMMDDHHmmss}_{description}.ts`
 - Use `knex.raw()` with raw SQL (same as core service pattern — no knex schema builder).
 - Always include `up` and `down` functions.
 - Never drop a column in a migration without checking all queries first.
 - Seed data (e.g. `payment_providers`) goes in a separate seed migration file.
+- pg_partman must be enabled before any partitioned-table migration:
+  `{ts}_enable_pg_partman.ts` runs `CREATE SCHEMA partman; CREATE EXTENSION pg_partman SCHEMA partman`.
 
 ### External References
 This service does NOT own users, restaurants, branches, or products. Foreign keys to those
@@ -585,7 +613,7 @@ Key rules:
 - Payment sessions are created server-side (never expose `KASHIER_API_KEY` to clients).
 - Every Kashier session is persisted to the `payment_sessions` table at creation time. Webhook handlers look up the session by `provider_session_id` — not by order ID alone.
 - Webhook endpoint is unauthenticated but **must verify the HMAC-SHA256 signature using `KASHIER_WEBHOOK_SECRET`** (not the API key) before trusting the payload.
-- Use `UNIQUE (idempotency_key)` on the `transactions` table to prevent double-processing webhooks.
+- Use `UNIQUE (idempotency_key, created_at)` on the `transactions` table to prevent double-processing webhooks (partition key must be included — see Partitioning section).
 - Transactions are immutable once `status = 'succeeded'` or `status = 'failed'`.
 - On payment failure (`payment.failed` webhook): order status stays `pending_payment` — it is NOT terminal. The customer may retry. A background sweep cancels `pending_payment` orders older than `PAYMENT_SESSION_TIMEOUT_MIN` (default 15 min).
 
@@ -620,7 +648,7 @@ Use the `idempotency()` middleware on:
 1. **Redis** (`{region}:os:idempotency:{userId}:{method}:{path}:{key}`, TTL 24h) — fast path.
 2. **`idempotency_keys` DB table** — fallback when Redis is unavailable. The table stores a `key_hash` (SHA-256 of the full key), `request_fingerprint` (hash of the request body), `response_body JSONB`, and `expires_at`. On Redis miss, the middleware falls back to a DB lookup before processing the request.
 
-The `transactions` table additionally has a `UNIQUE (idempotency_key)` constraint for database-level dedup of Kashier webhook replays, independent of the HTTP middleware.
+The `transactions` table additionally has a `UNIQUE (idempotency_key, created_at)` constraint for database-level dedup of Kashier webhook replays, independent of the HTTP middleware (partition key included — see Partitioning section).
 
 ---
 
@@ -710,3 +738,6 @@ PRESENCE_STALE_SEC=90               # Seconds before an agent is removed from th
 - Do NOT use `KASHIER_API_KEY` for webhook signature verification — the webhook secret is `KASHIER_WEBHOOK_SECRET`; these are distinct credentials.
 - Do NOT treat a `payment.failed` webhook as a terminal order state — the order stays `pending_payment` so the customer can retry; only the background sweep cancels it after timeout.
 - Do NOT create a new `deliveries` row on reassignment mutations — insert a new row with `reassigned_from` pointing to the previous one; never mutate a delivered/cancelled delivery row.
+- Do NOT add a DB-level `FOREIGN KEY` constraint from any child table to `orders`, `transactions`, `deliveries`, or `payment_webhook_events` — these are partitioned tables; the constraint cannot be enforced without including the partition key in the FK. Use logical-only FKs and enforce referential integrity in the service layer.
+- Do NOT create a `UNIQUE` constraint on a single column for a partitioned table — the partition key must be part of every unique constraint. E.g. `UNIQUE (idempotency_key, created_at)` not `UNIQUE (idempotency_key)`.
+- Do NOT rely on the per-partition `uq_deliveries_active_per_order` index alone to enforce single-active-delivery globally — it is only enforced within one partition. The service layer must check across partitions before inserting.
