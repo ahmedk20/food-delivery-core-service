@@ -1,24 +1,25 @@
 export const TOKENS = {
-    // Infrastructure
-    CacheProvider:      Symbol('CacheProvider'),
-    CoreServiceClient:  Symbol('CoreServiceClient'),
-    PaymentProvider:    Symbol('PaymentProvider'),
-    SocketServer:       Symbol('SocketServer'),
-    MessageBroker:      Symbol('MessageBroker'),
+    AuthService: Symbol('AuthService'),
+    UserService: Symbol('UserService'),
+    RestaurantService: Symbol('RestaurantService'),
+    MemberService: Symbol('MemberService'),
+    BranchService: Symbol('BranchService'),
+    ProductService: Symbol('ProductService'),
+    CustomerService: Symbol('CustomerService'),
+    AddressService: Symbol('AddressService'),
+    PermissionCacheService: Symbol('PermissionCacheService'),
 
-    // Services
-    OrderService:           Symbol('OrderService'),
-    PaymentService:         Symbol('PaymentService'),
-    DeliveryService:        Symbol('DeliveryService'),
-    AgentService:           Symbol('AgentService'),
-    RestaurantOrderService: Symbol('RestaurantOrderService'),
-    AdminService:           Symbol('AdminService'),
+    AuthController: Symbol('AuthController'),
+    UserController: Symbol('UserController'),
+    RestaurantController: Symbol('RestaurantController'),
+    MemberController: Symbol('MemberController'),
+    BranchController: Symbol('BranchController'),
+    ProductController: Symbol('ProductController'),
+    CustomerController: Symbol('CustomerController'),
+    AddressController: Symbol('AddressController'),
 
-    // Controllers
-    OrderController:           Symbol('OrderController'),
-    PaymentController:         Symbol('PaymentController'),
-    DeliveryController:        Symbol('DeliveryController'),
-    AgentController:           Symbol('AgentController'),
-    RestaurantOrderController: Symbol('RestaurantOrderController'),
-    AdminController:           Symbol('AdminController'),
-};
+    CacheProvider:   Symbol('CacheProvider'),
+    EmailProvider:   Symbol('EmailProvider'),
+
+    Logger: Symbol('Logger'),
+}
