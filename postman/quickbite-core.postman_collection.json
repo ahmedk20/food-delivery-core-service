@@ -1,0 +1,746 @@
+{
+  "info": {
+    "name": "QuickBite — Core Service",
+    "_postman_id": "quickbite-core-service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Core service API: auth, users, restaurants, branches, products, members, customer addresses."
+  },
+  "variable": [],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register (Customer)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\",\n  \"phone\": \"01012345678\",\n  \"name\": \"Test Customer\",\n  \"password\": \"Password1!\",\n  \"role\": \"customer\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register (Delivery Agent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"agent@example.com\",\n  \"phone\": \"01012345679\",\n  \"name\": \"Test Agent\",\n  \"password\": \"Password1!\",\n  \"role\": \"delivery_agent\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register (Restaurant Owner)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"phone\": \"01012345680\",\n  \"name\": \"Restaurant Owner\",\n  \"password\": \"Password1!\",\n  \"role\": \"restaurant_owner\",\n  \"restaurant\": {\n    \"name\": \"My Restaurant\",\n    \"logoURL\": \"https://example.com/logo.png\",\n    \"primaryCountry\": \"EG\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const cookie = pm.response.headers.get('Set-Cookie');",
+                  "if (cookie) {",
+                  "  const match = cookie.match(/access_token=([^;]+)/);",
+                  "  if (match) pm.environment.set('access_token', match[1]);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"Password1!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout"]
+            }
+          }
+        },
+        {
+          "name": "Forget Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/forget-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "forget-password"]
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"customer@example.com\",\n  \"otp\": \"123456\",\n  \"newPassword\": \"NewPassword1!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "reset-password"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/user/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "user", "me"]
+            }
+          }
+        },
+        {
+          "name": "Update Me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"phone\": \"01098765432\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/user/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "user", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customer — Addresses",
+      "item": [
+        {
+          "name": "Get Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/customer/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "customer", "addresses"]
+            }
+          }
+        },
+        {
+          "name": "Add Address",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Home\",\n  \"country\": \"EG\",\n  \"city\": \"Cairo\",\n  \"street\": \"123 Tahrir St\",\n  \"building\": \"Apt 4B\",\n  \"apartmentNumber\": \"4B\",\n  \"type\": \"home\",\n  \"lat\": 30.0444,\n  \"lng\": 31.2357,\n  \"isDefault\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/customer/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "customer", "addresses"]
+            }
+          }
+        },
+        {
+          "name": "Update Address",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Work\",\n  \"city\": \"Cairo\",\n  \"street\": \"456 Ramses Ave\",\n  \"type\": \"office\",\n  \"isDefault\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/customer/addresses/{{address_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "customer", "addresses", "{{address_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Address",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/customer/addresses/{{address_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "customer", "addresses", "{{address_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Restaurant",
+      "item": [
+        {
+          "name": "Get All Restaurants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurant",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurant"]
+            }
+          }
+        },
+        {
+          "name": "Create Restaurant",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner\": {\n    \"email\": \"newowner@example.com\",\n    \"phone\": \"01099887766\",\n    \"name\": \"New Owner\",\n    \"password\": \"Password1!\"\n  },\n  \"name\": \"New Restaurant\",\n  \"logoUrl\": \"https://example.com/logo.png\",\n  \"primaryCountry\": \"EG\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurant",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurant"]
+            }
+          }
+        },
+        {
+          "name": "Update Restaurant",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"logoUrl\": \"https://example.com/new-logo.png\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurant/{{restaurant_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurant", "{{restaurant_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Restaurant Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurant/{{restaurant_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurant", "{{restaurant_id}}", "status"]
+            },
+            "description": "status: active | inactive | pending | rejected | suspended"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Branch",
+      "item": [
+        {
+          "name": "Find Nearby Branches",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/branches/nearby?lat=30.0444&lng=31.2357&radius=5000",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "branches", "nearby"],
+              "query": [
+                { "key": "lat", "value": "30.0444" },
+                { "key": "lng", "value": "31.2357" },
+                { "key": "radius", "value": "5000" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Branches by Restaurant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/branches",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "branches"]
+            }
+          }
+        },
+        {
+          "name": "Create Branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"countryCode\": \"EG\",\n  \"label\": \"Main Branch\",\n  \"addressText\": \"123 Main St, Cairo\",\n  \"lat\": 30.0444,\n  \"lng\": 31.2357,\n  \"opensAt\": \"09:00\",\n  \"closesAt\": \"23:00\",\n  \"deliveryRadius\": 5000,\n  \"currency\": \"EGP\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/branches",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "branches"]
+            }
+          }
+        },
+        {
+          "name": "Update Branch",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Updated Branch Name\",\n  \"opensAt\": \"08:00\",\n  \"closesAt\": \"22:00\",\n  \"deliveryRadius\": 7000,\n  \"acceptOrders\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/branches/{{branch_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "branches", "{{branch_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Branch Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true,\n  \"commission\": 1500\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/branches/{{branch_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "branches", "{{branch_id}}", "status"]
+            },
+            "description": "commission is in minor currency units (piastres). isActive: true | false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Product",
+      "item": [
+        {
+          "name": "Get Categories by Restaurant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/categories",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "categories"]
+            }
+          }
+        },
+        {
+          "name": "Get Products by Restaurant",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "products"]
+            }
+          }
+        },
+        {
+          "name": "Get Products by Branch",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/branches/{{branch_id}}/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "branches", "{{branch_id}}", "products"]
+            }
+          }
+        },
+        {
+          "name": "Get Product by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products", "{{product_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Margherita Pizza\",\n  \"description\": \"Classic tomato sauce with mozzarella\",\n  \"imageUrl\": \"https://example.com/pizza.jpg\",\n  \"categoryName\": \"Pizza\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "products"]
+            }
+          }
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Margherita Pizza (Large)\",\n  \"price\": 8500,\n  \"stock\": 50,\n  \"isAvailable\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/products/{{product_id}}?branchId={{branch_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products", "{{product_id}}"],
+              "query": [
+                { "key": "branchId", "value": "{{branch_id}}", "description": "Required for branch-level price/stock overrides" }
+              ]
+            },
+            "description": "price and stock are branch-level overrides (requires branchId query param). price is in minor currency units."
+          }
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "products", "{{product_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Members & RBAC",
+      "item": [
+        {
+          "name": "Get Role Permissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/roles/{{role_name}}/permissions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "roles", "{{role_name}}", "permissions"],
+              "variable": [
+                {
+                  "key": "role_name",
+                  "value": "manager",
+                  "description": "Role name e.g. manager, cashier, kitchen_staff"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"staff@example.com\",\n  \"name\": \"Staff Member\",\n  \"phoneNumber\": \"01055554444\",\n  \"role\": \"manager\",\n  \"branchIds\": [{{branch_id}}]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/members",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "members"]
+            }
+          }
+        },
+        {
+          "name": "List Members",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/members",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "members"]
+            }
+          }
+        },
+        {
+          "name": "Update Member",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"cashier\",\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/members/{{member_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "members", "{{member_id}}"]
+            },
+            "description": "status: active | inactive | suspended"
+          }
+        },
+        {
+          "name": "Delete Member",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/members/{{member_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "members", "{{member_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Member Branches",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Cookie", "value": "access_token={{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branchIds\": [1, 2, 3]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/restaurants/{{restaurant_id}}/members/{{member_id}}/branches",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "restaurants", "{{restaurant_id}}", "members", "{{member_id}}", "branches"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Internal (HMAC)",
+      "description": "Service-to-service endpoints secured by HMAC. Set X-Internal-Signature header.",
+      "item": [
+        {
+          "name": "Get Product with Branch Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Internal-Signature", "value": "{{internal_hmac_signature}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/internal/products/{{product_id}}/branch/{{branch_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "internal", "products", "{{product_id}}", "branch", "{{branch_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Customer Address",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Internal-Signature", "value": "{{internal_hmac_signature}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/internal/customer/addresses/{{address_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "internal", "customer", "addresses", "{{address_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Internal-Signature", "value": "{{internal_hmac_signature}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/internal/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "internal", "users", "{{user_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Role Permissions (Internal)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Internal-Signature", "value": "{{internal_hmac_signature}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/internal/roles/{{role_name}}/permissions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "internal", "roles", "{{role_name}}", "permissions"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
