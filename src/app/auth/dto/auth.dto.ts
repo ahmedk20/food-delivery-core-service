@@ -12,6 +12,20 @@ import {
 import { Type } from "class-transformer";
 import {SystemRole} from "../../user/enums";
 
+export class RegisterRestaurantDTO {
+    @IsString()
+    @MinLength(1)
+    name!: string;
+
+    @IsOptional()
+    @IsString()
+    logoURL?: string;
+
+    @IsString()
+    @MinLength(1)
+    primaryCountry!: string;
+}
+
 export class RegisterDTO {
     @IsEmail()
     email!: string;
@@ -80,19 +94,4 @@ export class ResetPasswordDTO {
     })
     newPassword!: string;
 
-}
-
-
-export class RegisterRestaurantDTO {
-    @IsString()
-    @MinLength(1)
-    name!: string;
-
-    @IsOptional()
-    @IsString()
-    logoURL?: string;
-
-    @IsString()
-    @MinLength(1)
-    primaryCountry!: string;
 }
