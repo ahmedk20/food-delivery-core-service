@@ -130,10 +130,14 @@ export class BranchService {
                 throw BranchNotFoundError();
             }
 
-            // Only a transition into the inactive state should invalidate the
-            // consumer's cached branch metadata.
+            // Any status change invalidates the consumer's cached branch metadata.
+            // Deactivation is its own event; every other transition (including
+            // reactivation and commission changes) emits branch.updated so a
+            // reactivated branch isn't left cached as inactive until the TTL.
             if (updated.isActive === false) {
                 await writeOutboxEvent(trx, "branch.deactivated", String(branchId), { branchId });
+            } else {
+                await writeOutboxEvent(trx, "branch.updated", String(branchId), { branchId });
             }
 
             await trx.commit();

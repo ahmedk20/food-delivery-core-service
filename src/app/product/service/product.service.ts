@@ -128,7 +128,9 @@ export class ProductService {
                 if (data.price !== undefined) {
                     await writeOutboxEvent(trx, "product.price_changed", String(productId), { productId, branchId });
                 }
-                if (data.stock !== undefined) {
+                // Availability is part of the snapshot the consumer caches, so a
+                // toggle with no stock change must still invalidate it.
+                if (data.stock !== undefined || data.isAvailable !== undefined) {
                     await writeOutboxEvent(trx, "product.stock_changed", String(productId), { productId, branchId });
                 }
             }
