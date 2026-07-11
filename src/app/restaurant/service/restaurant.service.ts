@@ -17,6 +17,8 @@ import {
 import {RestaurantNotFoundError} from "../errors";
 import {SystemRole} from "../../user/enums";
 import {db} from "../../../lib/knex/knex";
+import {writeOutboxEvent} from "../../../lib/outbox/writer";
+import {findBranchIdsByRestaurant} from "../../branch/repository/branch.repository";
 import {UnAuthorisedError} from "../../../lib/auth/errors";
 import {UserService} from "../../user/service/user.service";
 import {MemberService} from "../../member/service/member.service";
@@ -62,7 +64,7 @@ export class RestaurantService {
                 phone: data.owner.phone,
                 name: data.owner.name,
                 password: data.owner.password,
-                systemRole: SystemRole.RESTAURANT_OWNER,
+                systemRole: SystemRole.RESTAURANT_USER,
             }, trx);
 
             const now = new Date();
@@ -121,7 +123,7 @@ export class RestaurantService {
 
         if (
             userRole !== SystemRole.SYSTEM_ADMIN &&
-            restaurant.ownerId !== userId
+            Number(restaurant.ownerId) !== Number(userId)
         ) {
             throw UnAuthorisedError;
         }
@@ -155,15 +157,33 @@ export class RestaurantService {
             throw RestaurantNotFoundError();
         }
 
-        const updated = await updateRestaurantStatus(restaurantId, data.status);
-        if (!updated) {
-            throw RestaurantNotFoundError();
-        }
+        const trx = await db.transaction();
+        try {
+            const updated = await updateRestaurantStatus(restaurantId, data.status, trx);
+            if (!updated) {
+                throw RestaurantNotFoundError();
+            }
 
-        return {
-            id: updated.id,
-            status: updated.status,
-        };
+            // A restaurant suspension invalidates EVERY one of its branches in the
+            // consumer's cache. Core owns the branch list, so the fan-out happens
+            // here: one event per branch, each carrying the branchId the consumer
+            // keys on (the consumer cannot derive this list itself).
+            if (data.status === RestaurantStatus.SUSPENDED) {
+                const branchIds = await findBranchIdsByRestaurant(restaurantId, trx);
+                for (const branchId of branchIds) {
+                    await writeOutboxEvent(trx, "restaurant.suspended", String(restaurantId), { branchId });
+                }
+            }
+
+            await trx.commit();
+            return {
+                id: updated.id,
+                status: updated.status,
+            };
+        } catch (e) {
+            await trx.rollback();
+            throw e;
+        }
     }
 
     findAll = async () => {

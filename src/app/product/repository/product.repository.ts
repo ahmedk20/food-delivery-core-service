@@ -149,8 +149,8 @@ export async function findProductsByBranch(
     };
 }
 
-export async function updateProduct(id: number, data: Record<string, any>): Promise<Product> {
-    const [row] = await db("products")
+export async function updateProduct(id: number, data: Record<string, any>, conn: Knex = db): Promise<Product> {
+    const [row] = await conn("products")
         .where("id", id)
         .whereNull("deleted_at")
         .update({

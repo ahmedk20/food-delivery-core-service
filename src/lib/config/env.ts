@@ -53,6 +53,13 @@ const envSchema = z.object({
     EMAIL_USER:     z.string().default(''),
     EMAIL_PASSWORD: z.string().default(''),
     EMAIL_FROM:     z.string().default('Food Delivery <noreply@fooddelivery.com>'),
+
+    // RabbitMQ — outbound domain events (transactional outbox).
+    RABBITMQ_URL:                  z.string().default('amqp://guest:guest@localhost:5672'),
+    // Must match the exchange the order-service consumer binds to.
+    RABBITMQ_CORE_EVENTS_EXCHANGE: z.string().default('core-service.events'),
+    OUTBOX_DRAIN_TICK_SEC:         z.coerce.number().positive().default(2),
+    OUTBOX_BATCH_SIZE:             z.coerce.number().positive().default(50),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -111,5 +118,16 @@ export const env = {
         user:     data.EMAIL_USER,
         password: data.EMAIL_PASSWORD,
         from:     data.EMAIL_FROM,
+    },
+
+    rabbitmq: {
+        url: data.RABBITMQ_URL,
+        coreEvents: {
+            exchange: data.RABBITMQ_CORE_EVENTS_EXCHANGE,
+        },
+        outbox: {
+            drainTickSec: data.OUTBOX_DRAIN_TICK_SEC,
+            batchSize:    data.OUTBOX_BATCH_SIZE,
+        },
     },
 };

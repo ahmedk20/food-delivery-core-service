@@ -6,12 +6,18 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js"
+    "dev:worker": "tsx watch src/worker.ts",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "migrate:latest": "cross-env APP_STAGE=dev tsx ./node_modules/knex/bin/cli.js --knexfile src/lib/knex/knexfile.ts migrate:latest",
+    "migrate:rollback": "cross-env APP_STAGE=dev tsx ./node_modules/knex/bin/cli.js --knexfile src/lib/knex/knexfile.ts migrate:rollback"
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/helmet": "^0.0.48",
     "@types/ioredis": "^4.28.10",
+    "amqp-connection-manager": "^5.0.0",
+    "amqplib": "^0.10.4",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
@@ -31,15 +37,18 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/amqplib": "^0.10.7",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.2.3",
     "@types/nodemailer": "^8.0.0",
+    "cross-env": "^10.1.0",
     "eslint": "^10.0.0",
     "npx": "^10.2.2",
     "prettier": "^3.8.1",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.19.4",
     "typescript": "^5.9.3"
   },
   "private": true

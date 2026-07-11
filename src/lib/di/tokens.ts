@@ -20,6 +20,7 @@ export const TOKENS = {
 
     CacheProvider:   Symbol('CacheProvider'),
     EmailProvider:   Symbol('EmailProvider'),
+    MessageBroker:   Symbol('MessageBroker'),
 
     Logger: Symbol('Logger'),
 }

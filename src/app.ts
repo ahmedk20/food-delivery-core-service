@@ -14,7 +14,7 @@ export function createApp(){
     app.use(express.json());
     app.use(cookieParser());
     app.use(correlationId);
-    app.use('/api', routes);
+    app.use('/api/v1', routes);
     app.use(errorHandler);
     return app;
 

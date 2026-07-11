@@ -24,7 +24,7 @@ rbacRouter.get('/restaurants/:restaurantId/members',
     authenticate,
     requireRestaurantMember('restaurantId'),
     rbac({resource: "core:member", action: 'read'}),
-    ctrl.listMembers
+    ctrl.listMembers,
 );
 
 rbacRouter.patch('/restaurants/:restaurantId/members/:memberId',

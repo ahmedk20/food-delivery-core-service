@@ -23,6 +23,8 @@ import {BranchController} from "../../app/branch/controller/branch.controller";
 import {AddressController} from "../../app/customer/controller/address.controller";
 import {cacheProvider} from "../../lib/cache/init";
 import {emailProvider} from "../../lib/email/init";
+import {env} from "../config/env";
+import {RabbitMQClient} from "../../pkg/messaging/rabbitmq/rabbitmq.client";
 
 
 container.registerSingleton(TOKENS.AuthService, AuthService);
@@ -45,6 +47,13 @@ container.registerSingleton(TOKENS.AddressController, AddressController);
 
 container.registerInstance(TOKENS.CacheProvider, cacheProvider)
 container.registerInstance(TOKENS.EmailProvider, emailProvider)
+
+// Publish-only RabbitMQ client. Connected/closed by the worker process, not the
+// HTTP server — the HTTP path only writes outbox rows, never touches the broker.
+container.registerInstance(TOKENS.MessageBroker, new RabbitMQClient({
+    url: env.rabbitmq.url,
+    reconnectInitialMs: 2000,
+}))
 
 export { container}
 

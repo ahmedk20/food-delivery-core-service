@@ -19,6 +19,8 @@ import {
 import {parsePaginationQuery, parseFilters} from "../../../lib/http/pagination/parse-query";
 import {findOrCreateCategory, findCategoriesByRestaurant} from "../repository/category.repository";
 import {updateBranchDetails} from "../repository/product-branch-details.repository";
+import {db} from "../../../lib/knex/knex";
+import {writeOutboxEvent} from "../../../lib/outbox/writer";
 import {injectable} from "tsyringe";
 
 @injectable()
@@ -104,23 +106,39 @@ export class ProductService {
             categoryId = category.id;
         }
 
-        const updatedProduct = await updateProduct(productId, {
-            name: data.name,
-            description: data.description,
-            imageUrl: data.imageUrl,
-            categoryId,
-        });
+        const trx = await db.transaction();
+        try {
+            const updatedProduct = await updateProduct(productId, {
+                name: data.name,
+                description: data.description,
+                imageUrl: data.imageUrl,
+                categoryId,
+            }, trx);
 
-        let branchDetails;
-        if (branchId && (data.price !== undefined || data.stock !== undefined || data.isAvailable !== undefined)) {
-            branchDetails = await updateBranchDetails(branchId, productId, {
-                price: data.price,
-                stock: data.stock,
-                isAvailable: data.isAvailable,
-            });
+            let branchDetails;
+            if (branchId && (data.price !== undefined || data.stock !== undefined || data.isAvailable !== undefined)) {
+                branchDetails = await updateBranchDetails(branchId, productId, {
+                    price: data.price,
+                    stock: data.stock,
+                    isAvailable: data.isAvailable,
+                }, trx);
+
+                // Emit only when the field the consumer reacts to actually changed.
+                // Payload carries exactly what order-service's handler reads.
+                if (data.price !== undefined) {
+                    await writeOutboxEvent(trx, "product.price_changed", String(productId), { productId, branchId });
+                }
+                if (data.stock !== undefined) {
+                    await writeOutboxEvent(trx, "product.stock_changed", String(productId), { productId, branchId });
+                }
+            }
+
+            await trx.commit();
+            return {product: updatedProduct, branchDetails};
+        } catch (e) {
+            await trx.rollback();
+            throw e;
         }
-
-        return {product: updatedProduct, branchDetails};
     }
 
     delete = async (productId: number, userId: number, userRole: SystemRole) => {

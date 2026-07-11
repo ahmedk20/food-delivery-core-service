@@ -15,6 +15,8 @@ import {
 import {BranchNotFoundError} from "../errors";
 import {injectable} from "tsyringe";
 import {parsePaginationQuery, parseFilters} from "../../../lib/http/pagination/parse-query";
+import {db} from "../../../lib/knex/knex";
+import {writeOutboxEvent} from "../../../lib/outbox/writer";
 
 @injectable()
 
@@ -83,18 +85,25 @@ export class BranchService {
         // Check authorization: owner or admin
         if (
             userRole !== SystemRole.SYSTEM_ADMIN &&
-            restaurant?.ownerId !== userId
+            Number(restaurant?.ownerId) !== Number(userId)
         ) {
             throw UnAuthorisedError;
         }
 
-        // Update branch
-        const updated = await updateBranch(branchId, data);
-        if (!updated) {
-            throw BranchNotFoundError();
+        // Update branch + emit event atomically.
+        const trx = await db.transaction();
+        try {
+            const updated = await updateBranch(branchId, data, trx);
+            if (!updated) {
+                throw BranchNotFoundError();
+            }
+            await writeOutboxEvent(trx, "branch.updated", String(branchId), { branchId });
+            await trx.commit();
+            return updated;
+        } catch (e) {
+            await trx.rollback();
+            throw e;
         }
-
-        return updated;
     }
 
     updateStatus = async (
@@ -113,18 +122,31 @@ export class BranchService {
             throw BranchNotFoundError();
         }
 
-        // Update status
-        const updated = await updateBranchStatus(branchId, data);
-        if (!updated) {
-            throw BranchNotFoundError();
-        }
+        // Update status + emit event atomically.
+        const trx = await db.transaction();
+        try {
+            const updated = await updateBranchStatus(branchId, data, trx);
+            if (!updated) {
+                throw BranchNotFoundError();
+            }
 
-        return {
-            id: updated.id,
-            isActive: updated.isActive,
-            acceptOrders: updated.acceptOrders,
-            commission: updated.commission,
-        };
+            // Only a transition into the inactive state should invalidate the
+            // consumer's cached branch metadata.
+            if (updated.isActive === false) {
+                await writeOutboxEvent(trx, "branch.deactivated", String(branchId), { branchId });
+            }
+
+            await trx.commit();
+            return {
+                id: updated.id,
+                isActive: updated.isActive,
+                acceptOrders: updated.acceptOrders,
+                commission: updated.commission,
+            };
+        } catch (e) {
+            await trx.rollback();
+            throw e;
+        }
     }
 }
 

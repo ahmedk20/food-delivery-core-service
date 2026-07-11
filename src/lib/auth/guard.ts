@@ -8,7 +8,9 @@ export async function authenticate(
     next: NextFunction
 ) {
     try {
-        const token = req.cookies.access_token;
+        const token =
+            req.cookies.access_token ??
+            req.headers.authorization?.replace(/^Bearer\s+/i, '');
 
         if (!token) {
             throw NotAuthenticated;

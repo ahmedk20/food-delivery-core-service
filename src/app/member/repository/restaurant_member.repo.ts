@@ -49,8 +49,8 @@ export async function findMembersByRestaurantId(
 ) {
     let query = db("restaurant_members as rm")
         .select(
-            "rm.id",
-            "rm.user_id as userId",
+            db.raw("rm.id::int as id"),
+            db.raw("rm.user_id::int as \"userId\""),
             "u.email",
             "u.name",
             "u.phone",

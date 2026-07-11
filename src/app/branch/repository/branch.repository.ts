@@ -93,6 +93,15 @@ export async function findBranchesByRestaurant(
     return { data: rows.map(toEntity), meta: { hasMore, nextCursor } };
 }
 
+// Used by restaurant suspension fan-out: one outbox event is emitted per branch,
+// so we need every branch id belonging to the restaurant, read inside the same trx.
+export async function findBranchIdsByRestaurant(restaurantId: number, conn: Knex = db): Promise<number[]> {
+    const rows = await conn("restaurant_branches")
+        .select("id")
+        .where("restaurant_id", restaurantId);
+    return rows.map((r: { id: number }) => r.id);
+}
+
 export async function findBranchById(id: number): Promise<Branch | undefined> {
     const row = await db("restaurant_branches")
         .select(BRANCH_COLUMNS)
