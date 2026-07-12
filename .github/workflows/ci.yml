@@ -40,3 +40,66 @@ jobs:
       # so this one step already protects main from broken code.
       - name: Build (type-check + compile)
         run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Second job: prove the migrations build a valid schema from an EMPTY database.
+  # It runs in parallel with `build` (jobs are independent unless you add `needs:`).
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: Run migrations on a clean DB
+    runs-on: ubuntu-latest
+
+    # `services:` are extra containers GitHub starts ALONGSIDE the job, on the
+    # same network. Here we boot a throwaway Postgres just for this run.
+    # We use the PostGIS image (not plain postgres) because a migration does
+    # `CREATE EXTENSION postgis`, which the plain image doesn't ship.
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: quickbite_core_test
+        ports:
+          - 5432:5432   # expose the container's 5432 on the runner's localhost
+        # Don't start the job's steps until Postgres answers `pg_isready`.
+        # Without this, migrations could fire before the DB is accepting connections.
+        options: >-
+          --health-cmd "pg_isready -U postgres -d quickbite_core_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    # Env for EVERY step in this job. env.ts validates all of these at import
+    # time (it exits if any required secret is missing), so we must supply them —
+    # even the JWT/HMAC secrets, which migrations never actually use.
+    env:
+      APP_STAGE: test          # -> env.ts tries to load .env.test (absent in CI),
+                               #    so it falls back to these process env vars.
+      # Point at the throwaway service DB above — NOT your Neon cloud DB.
+      DB_URL: postgresql://postgres:postgres@localhost:5432/quickbite_core_test
+      ACCESS_SECRET: test-access-secret
+      REFRESH_SECRET: test-refresh-secret
+      ACCESS_EXPIRES_IN: 15m
+      REFRESH_EXPIRES_IN: 7d
+      BCRYPT_SALT_ROUNDS: "10"
+      INTERNAL_HMAC_SECRET: test-internal-hmac-secret
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # We call knex DIRECTLY instead of `npm run migrate:latest`, because that
+      # script hard-codes APP_STAGE=dev, which would load .env.dev and hit Neon.
+      # Here APP_STAGE=test (set above) keeps us pointed at the throwaway DB.
+      - name: Run migrations
+        run: npx tsx ./node_modules/knex/bin/cli.js --knexfile src/lib/knex/knexfile.ts migrate:latest
