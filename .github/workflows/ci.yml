@@ -1,0 +1,42 @@
+# The human-readable name shown in the GitHub "Actions" tab.
+name: CI
+
+# WHEN should this pipeline run?
+on:
+  push:
+    branches: [main]        # every push to main
+  pull_request:
+    branches: [main]        # every PR that targets main (runs before merge)
+  workflow_dispatch:        # lets you trigger it by hand from the Actions tab
+
+# A workflow is made of one or more JOBS. Each job runs on its own fresh VM.
+jobs:
+  build:
+    name: Build & Type-check
+    runs-on: ubuntu-latest  # the VM image GitHub gives us (a clean Ubuntu box)
+
+    # STEPS run top-to-bottom on that VM. If any step fails, the job fails.
+    steps:
+      # `uses:` pulls in a pre-published action. checkout = git clone our repo
+      # onto the VM (the VM starts empty).
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install Node 22 and enable npm caching so repeat runs are faster.
+      # `cache: npm` uses package-lock.json to key the cache.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` = clean install straight from package-lock.json.
+      # Stricter and faster than `npm install`; fails if lockfile is out of sync.
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run build` runs `tsc`, which type-checks the whole project AND
+      # compiles it to dist/. If there's a type error anywhere, this fails —
+      # so this one step already protects main from broken code.
+      - name: Build (type-check + compile)
+        run: npm run build
