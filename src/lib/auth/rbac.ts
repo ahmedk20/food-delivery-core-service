@@ -3,7 +3,19 @@ import {container} from "../di/container";
 import {TOKENS} from "../di/tokens";
 import {IPermissionCacheService} from "./permission-cache.interface";
 import {SystemRole} from "../../app/user/enums";
-import {NotAuthenticated} from "./errors";
+import {NotAuthenticated, UnAuthorisedError} from "./errors";
+
+/**
+ * Pure role-membership check for use *inside services* (not middleware).
+ * Throws UnAuthorisedError when `role` is not in `allowed`. Handy when the
+ * allowed set spans multiple system roles and the route guard alone isn't
+ * expressive enough (e.g. "system_admin OR restaurant_user").
+ */
+export function requireSystemRole(role: SystemRole, allowed: SystemRole[]): void {
+    if (!allowed.includes(role)) {
+        throw UnAuthorisedError;
+    }
+}
 
 export interface RBACOptions {
     resource: string;

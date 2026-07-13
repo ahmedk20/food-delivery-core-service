@@ -8,6 +8,7 @@ export const TOKENS = {
     CustomerService: Symbol('CustomerService'),
     AddressService: Symbol('AddressService'),
     PermissionCacheService: Symbol('PermissionCacheService'),
+    MediaService: Symbol('MediaService'),
 
     AuthController: Symbol('AuthController'),
     UserController: Symbol('UserController'),
@@ -17,9 +18,11 @@ export const TOKENS = {
     ProductController: Symbol('ProductController'),
     CustomerController: Symbol('CustomerController'),
     AddressController: Symbol('AddressController'),
+    MediaController: Symbol('MediaController'),
 
     CacheProvider:   Symbol('CacheProvider'),
     EmailProvider:   Symbol('EmailProvider'),
+    StorageProvider: Symbol('StorageProvider'),
     MessageBroker:   Symbol('MessageBroker'),
 
     Logger: Symbol('Logger'),

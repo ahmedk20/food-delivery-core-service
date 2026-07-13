@@ -8,6 +8,7 @@ import { branchRouter } from "./app/branch/routes";
 import { productRouter } from "./app/product/routes";
 import { rbacRouter } from "./app/member/routes";
 import { internalRouter } from "./app/internal/routes.js";
+import { mediaRouter } from "./app/media/routes";
 
 export const routes = Router();
 routes.use("/health", healthRouter);
@@ -17,6 +18,7 @@ routes.use("/auth", authRouter);
 routes.use("/user", userRouter);
 routes.use("/customer", customerRouter);
 routes.use("/restaurant", restaurantRouter);
+routes.use("/media", mediaRouter);
 
 routes.use("/", branchRouter);
 routes.use("/", productRouter);

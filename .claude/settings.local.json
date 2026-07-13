@@ -12,7 +12,8 @@
       "PowerShell(ls *)",
       "Bash(powershell -Command \"\\(Get-Content docs\\\\implementation-plan.md\\) -replace '### 10\\\\.', '### 11.' | Set-Content docs\\\\implementation-plan.md -Encoding utf8\")",
       "Bash(python -c ' *)",
-      "Bash(python -c \"import sys; [print\\(l\\) for l in sys.stdin.read\\(\\).encode\\('ascii','replace'\\).decode\\(\\).splitlines\\(\\)]\")"
+      "Bash(python -c \"import sys; [print\\(l\\) for l in sys.stdin.read\\(\\).encode\\('ascii','replace'\\).decode\\(\\).splitlines\\(\\)]\")",
+      "Bash(npm run *)"
     ]
   }
 }

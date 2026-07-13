@@ -54,6 +54,17 @@ const envSchema = z.object({
     EMAIL_PASSWORD: z.string().default(''),
     EMAIL_FROM:     z.string().default('Food Delivery <noreply@fooddelivery.com>'),
 
+    // AWS / S3 — media uploads (presigned PUT urls).
+    // Credentials default to empty so the service still boots in dev/CI/test
+    // without S3 configured. The S3 provider only fails at call-time (i.e. when
+    // someone actually requests an upload url), never at startup.
+    AWS_REGION:            z.string().default('us-east-1'),
+    AWS_ACCESS_KEY_ID:     z.string().default(''),
+    AWS_SECRET_ACCESS_KEY: z.string().default(''),
+    S3_BUCKET:             z.string().default(''),
+    // CDN in front of the bucket — public media urls use this domain when set.
+    CDN_URL:               z.string().default(''),
+
     // RabbitMQ — outbound domain events (transactional outbox).
     RABBITMQ_URL:                  z.string().default('amqp://guest:guest@localhost:5672'),
     // Must match the exchange the order-service consumer binds to.
@@ -111,6 +122,14 @@ export const env = {
     },
 
     internalHmacSecret: data.INTERNAL_HMAC_SECRET,
+
+    aws: {
+        region:          data.AWS_REGION,
+        accessKeyId:     data.AWS_ACCESS_KEY_ID,
+        secretAccessKey: data.AWS_SECRET_ACCESS_KEY,
+        s3Bucket:        data.S3_BUCKET,
+        cdnUrl:          data.CDN_URL,
+    },
 
     email: {
         host:     data.EMAIL_HOST,
