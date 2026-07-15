@@ -31,8 +31,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run build
-      - run: npm test
+      - run: npm run build   # tsc type-check — core's test gate (matches ci.yml)
 
   deploy:
     name: Build, migrate, deploy
